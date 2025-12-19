@@ -28,12 +28,15 @@
                 </select>
             </div>
             
-            <button id="parse-btn" class="btn" onclick="parseRealData()">
+            <button id="parse-btn" class="btn">
                 <i class="fas fa-play"></i> Парсить
             </button>
-                        <!-- После кнопки "Парсить" добавьте: -->
-            <button onclick="testParse()" class="btn-small" style="background: #6c757d;">
-                <i class="fas fa-vial"></i> Тест
+            <!-- Убрал onclick и добавил кнопки для отладки -->
+            <button onclick="testAPI()" class="btn-small" style="background: #6c757d;">
+                <i class="fas fa-vial"></i> Тест API
+            </button>
+            <button onclick="simpleTest()" class="btn-small" style="background: #dc3545;">
+                <i class="fas fa-bug"></i> Диагностика
             </button>
             
             <div id="loading" style="display:none;">
@@ -52,19 +55,23 @@
                 </button>
             </div>
             
+            <!-- Обновленная таблица под 8 полей -->
             <table id="results-table">
                 <thead>
                     <tr>
-                        <th>Дата</th>
+                        <th>Дата добавления</th>
+                        <th>Дата матча</th>
                         <th>Матч</th>
                         <th>Прогноз</th>
                         <th>Коэф.</th>
+                        <th>Ставка</th>
                         <th>Результат</th>
+                        <th>Прибыль</th>
                     </tr>
                 </thead>
                 <tbody id="results-body">
                     <tr>
-                        <td colspan="5">Нет данных</td>
+                        <td colspan="8">Нет данных</td>
                     </tr>
                 </tbody>
             </table>
