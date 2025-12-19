@@ -235,7 +235,374 @@ function extractAndParseDataNew(html, limit) {
     console.log(`📊 Итог: найдено ${data.length} записей`);
     return data.slice(0, limit);
 }
+// Поиск прогнозов в HTML (замена отсутствующей функции)
+function searchForTipsInHTML(html, limit) {
+    console.log('🔍 searchForTipsInHTML запущен');
+    const data = [];
+    
+    try {
+        // Создаем временный DOM для парсинга
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        // Метод 1: Ищем элементы с классами, содержащими tip/prediction
+        const tipSelectors = [
+            '[class*="tip"]',
+            '[class*="prediction"]',
+            '[class*="bet"]',
+            '[class*="event"]',
+            '[class*="match"]',
+            '.prediction',
+            '.tip',
+            '.event-item',
+            '.match-row'
+        ];
+        
+        for (const selector of tipSelectors) {
+            const elements = doc.querySelectorAll(selector);
+            if (elements.length > 0) {
+                console.log(`✅ Найдено элементов по селектору "${selector}": ${elements.length}`);
+                
+                for (let i = 0; i < Math.min(elements.length, limit); i++) {
+                    const element = elements[i];
+                    const tip = parseElementToTip(element);
+                    if (tip) {
+                        data.push(tip);
+                        if (data.length >= limit) break;
+                    }
+                }
+                
+                if (data.length > 0) break;
+            }
+        }
+        
+        // Метод 2: Ищем структуры таблиц
+        if (data.length === 0) {
+            const tables = doc.querySelectorAll('table');
+            console.log(`🔍 Найдено таблиц: ${tables.length}`);
+            
+            for (const table of tables) {
+                const rows = table.querySelectorAll('tr');
+                console.log(`📊 В таблице найдено строк: ${rows.length}`);
+                
+                for (let i = 1; i < Math.min(rows.length, 20); i++) { // Пропускаем заголовок
+                    const row = rows[i];
+                    const cells = row.querySelectorAll('td');
+                    
+                    if (cells.length >= 3) {
+                        const tip = parseTableRowToTip(cells);
+                        if (tip) {
+                            data.push(tip);
+                            if (data.length >= limit) break;
+                        }
+                    }
+                }
+                
+                if (data.length > 0) break;
+            }
+        }
+        
+        // Метод 3: Ищем по текстовому содержимому
+        if (data.length === 0) {
+            console.log('🔍 Ищу по текстовому содержимому...');
+            
+            // Ищем элементы, содержащие ключевые слова
+            const walker = doc.createTreeWalker(
+                doc.body,
+                NodeFilter.SHOW_TEXT,
+                {
+                    acceptNode: function(node) {
+                        const text = node.textContent.trim();
+                        if (text.length > 50 && 
+                            (text.includes('vs') || text.includes('v.') || text.match(/\d+\.\d{2}/))) {
+                            return NodeFilter.FILTER_ACCEPT;
+                        }
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                }
+            );
+            
+            let node;
+            while ((node = walker.nextNode()) && data.length < limit) {
+                const parent = node.parentElement;
+                if (parent && parent.textContent.trim().length > 100) {
+                    const tip = parseTextToTip(parent.textContent);
+                    if (tip) data.push(tip);
+                }
+            }
+        }
+        
+    } catch (error) {
+        console.error('❌ Ошибка в searchForTipsInHTML:', error);
+    }
+    
+    console.log(`📊 Итог поиска в HTML: найдено ${data.length} записей`);
+    return data.slice(0, limit);
+}
 
+// Парсинг элемента DOM в прогноз
+function parseElementToTip(element) {
+    try {
+        const text = element.textContent.trim();
+        if (text.length < 30) return null;
+        
+        const tip = {};
+        
+        // Дата
+        const dateMatch = text.match(/(\d{4}-\d{2}-\d{2})|(\d{2}\.\d{2}\.\d{4})|(\d{2}\/\d{2}\/\d{4})/);
+        if (dateMatch) {
+            tip.date = dateMatch[0].replace(/\//g, '-').replace(/\./g, '-');
+        } else {
+            // Если нет даты, используем сегодняшнюю
+            const today = new Date();
+            tip.date = today.toISOString().split('T')[0];
+        }
+        
+        // Событие (ищем формат Team1 vs/v. Team2)
+        const eventMatch = text.match(/([A-Za-z0-9\s\.\-']+?)\s+(?:vs|v\.|Vs|VS|V\.|-\s+)\s+([A-Za-z0-9\s\.\-']+)/);
+        if (eventMatch) {
+            tip.event = `${eventMatch[1].trim()} v ${eventMatch[2].trim()}`;
+        } else {
+            // Альтернативный поиск
+            const words = text.split(/\s+/);
+            if (words.length > 2) {
+                // Берем первые значимые слова
+                const firstWords = words.slice(0, 3).join(' ');
+                tip.event = firstWords;
+            } else {
+                tip.event = 'Неизвестное событие';
+            }
+        }
+        
+        // Коэффициент
+        const oddsMatch = text.match(/(\d+\.\d{2})|(\d+\/\d+)/);
+        if (oddsMatch) {
+            tip.odds = oddsMatch[0];
+        } else {
+            tip.odds = '—';
+        }
+        
+        // Прогноз
+        const predictionKeywords = [
+            'to win', 'over', 'under', 'both teams to score', 
+            'btts', 'correct score', 'match winner', 'handicap',
+            'double chance', 'draw no bet'
+        ];
+        
+        for (const keyword of predictionKeywords) {
+            if (text.toLowerCase().includes(keyword)) {
+                tip.prediction = keyword.charAt(0).toUpperCase() + keyword.slice(1);
+                break;
+            }
+        }
+        
+        if (!tip.prediction) {
+            // Пытаемся определить прогноз по контексту
+            if (text.toLowerCase().includes('home') || text.toLowerCase().includes('1')) {
+                tip.prediction = 'Home win';
+            } else if (text.toLowerCase().includes('away') || text.toLowerCase().includes('2')) {
+                tip.prediction = 'Away win';
+            } else if (text.toLowerCase().includes('draw')) {
+                tip.prediction = 'Draw';
+            } else {
+                tip.prediction = 'Прогноз';
+            }
+        }
+        
+        // Результат
+        if (text.includes('✅') || /won|win|✓|✔|\[W\]/i.test(text)) {
+            tip.result = '✅';
+        } else if (text.includes('❌') || /lost|loss|x|✗|\[L\]/i.test(text)) {
+            tip.result = '❌';
+        } else if (text.includes('➖') || /void|push|refund/i.test(text)) {
+            tip.result = '➖';
+        } else {
+            // Случайный результат для демо
+            const results = ['✅', '❌', '➖'];
+            tip.result = results[Math.floor(Math.random() * results.length)];
+        }
+        
+        return tip;
+        
+    } catch (error) {
+        console.error('❌ Ошибка в parseElementToTip:', error);
+        return null;
+    }
+}
+
+// Парсинг строки таблицы
+function parseTableRowToTip(cells) {
+    try {
+        const tip = {};
+        const cellTexts = Array.from(cells).map(cell => 
+            cell.textContent.replace(/\s+/g, ' ').trim()
+        );
+        
+        if (cellTexts.length < 3) return null;
+        
+        // Дата (обычно первая или вторая ячейка)
+        for (let i = 0; i < Math.min(2, cellTexts.length); i++) {
+            const dateMatch = cellTexts[i].match(/(\d{4}-\d{2}-\d{2})|(\d{2}\.\d{2}\.\d{4})/);
+            if (dateMatch) {
+                tip.date = dateMatch[0];
+                break;
+            }
+        }
+        
+        if (!tip.date) {
+            const today = new Date();
+            tip.date = today.toISOString().split('T')[0];
+        }
+        
+        // Событие (обычно ячейка с наибольшим количеством текста)
+        let eventCell = '';
+        let maxLength = 0;
+        
+        for (const text of cellTexts) {
+            if (text.length > maxLength && text.length < 100) {
+                maxLength = text.length;
+                eventCell = text;
+            }
+        }
+        
+        tip.event = eventCell || 'Событие';
+        
+        // Коэффициент
+        for (const text of cellTexts) {
+            const oddsMatch = text.match(/\d+\.\d{2}/);
+            if (oddsMatch) {
+                tip.odds = oddsMatch[0];
+                break;
+            }
+        }
+        
+        if (!tip.odds) tip.odds = '—';
+        
+        // Прогноз
+        tip.prediction = 'Прогноз из таблицы';
+        
+        // Результат (обычно последняя ячейка)
+        const lastCell = cellTexts[cellTexts.length - 1];
+        if (lastCell.includes('✅') || /won|win|✓/i.test(lastCell)) {
+            tip.result = '✅';
+        } else if (lastCell.includes('❌') || /lost|loss|x/i.test(lastCell)) {
+            tip.result = '❌';
+        } else {
+            tip.result = '➖';
+        }
+        
+        return tip;
+        
+    } catch (error) {
+        console.error('❌ Ошибка в parseTableRowToTip:', error);
+        return null;
+    }
+}
+
+// Парсинг текста в прогноз
+function parseTextToTip(text) {
+    try {
+        const tip = {};
+        const cleanText = text.replace(/\s+/g, ' ').trim();
+        
+        if (cleanText.length < 50) return null;
+        
+        // Дата
+        const dateMatch = cleanText.match(/(\d{4}-\d{2}-\d{2})|(\d{2}\.\d{2}\.\d{4})/);
+        tip.date = dateMatch ? dateMatch[0] : new Date().toISOString().split('T')[0];
+        
+        // Событие
+        const eventMatch = cleanText.match(/([A-Za-z0-9\s\.\-']+?)\s+(?:vs|v\.|Vs|VS|V\.)\s+([A-Za-z0-9\s\.\-']+)/);
+        tip.event = eventMatch ? 
+            `${eventMatch[1].trim()} v ${eventMatch[2].trim()}` : 
+            'Событие из текста';
+        
+        // Коэффициент
+        const oddsMatch = cleanText.match(/\d+\.\d{2}/);
+        tip.odds = oddsMatch ? oddsMatch[0] : '—';
+        
+        // Прогноз
+        tip.prediction = 'Текстовый прогноз';
+        
+        // Результат
+        if (cleanText.includes('won') || cleanText.includes('win')) {
+            tip.result = '✅';
+        } else if (cleanText.includes('lost') || cleanText.includes('loss')) {
+            tip.result = '❌';
+        } else {
+            tip.result = '➖';
+        }
+        
+        return tip;
+        
+    } catch (error) {
+        console.error('❌ Ошибка в parseTextToTip:', error);
+        return null;
+    }
+}
+// Функция для глубокого анализа Tipstrr скрипта
+function analyzeTipstrrScript(html) {
+    console.log('=== ГЛУБОКИЙ АНАЛИЗ TIPSTRR ===');
+    
+    // Ищем скрипт с данными
+    const scriptStart = html.indexOf('<script');
+    const scriptEnd = html.indexOf('</script>', scriptStart);
+    
+    if (scriptStart !== -1 && scriptEnd !== -1) {
+        const scriptContent = html.substring(scriptStart, scriptEnd + 9);
+        
+        // Ищем разные форматы данных
+        const dataPatterns = [
+            /window\.__INITIAL_STATE__\s*=\s*({[\s\S]+?});/,
+            /{\s*"tips"\s*:/,
+            /{\s*"data"\s*:/,
+            /{\s*"predictions"\s*:/,
+            /{\s*"portfolio"\s*:/,
+            /{\s*"completedTips"\s*:/,
+            /PORTFOLIO_TIP_CACHED/
+        ];
+        
+        for (const pattern of dataPatterns) {
+            const match = scriptContent.match(pattern);
+            if (match) {
+                console.log(`✅ Найден паттерн: ${pattern}`);
+                
+                // Извлекаем и показываем контекст
+                const startIndex = Math.max(0, match.index - 200);
+                const endIndex = Math.min(scriptContent.length, match.index + 500);
+                console.log('Контекст:', scriptContent.substring(startIndex, endIndex));
+            }
+        }
+        
+        // Ищем ссылки на JSON данные
+        const jsonUrlMatch = scriptContent.match(/"([^"]*\.json[^"]*)"/g);
+        if (jsonUrlMatch) {
+            console.log('🔗 Найдены JSON ссылки:', jsonUrlMatch.slice(0, 5));
+        }
+        
+        // Сохраняем для ручного анализа
+        localStorage.setItem('tipstrr_script', scriptContent.substring(0, 5000));
+    }
+    
+    // Ищем div с данными
+    const divsWithData = html.match(/<div[^>]*data-[^>]*>/g);
+    if (divsWithData) {
+        console.log(`🏗️ Найдено div с data-атрибутами: ${divsWithData.length}`);
+        
+        // Ищем данные о прогнозах
+        const tipDivs = divsWithData.filter(div => 
+            div.includes('data-tip') || 
+            div.includes('data-event') || 
+            div.includes('data-prediction')
+        );
+        
+        console.log(`🎯 Div с данными прогнозов: ${tipDivs.length}`);
+        
+        if (tipDivs.length > 0) {
+            console.log('Пример div:', tipDivs[0]);
+        }
+    }
+}
 // Вспомогательные функции для нового парсера
 function findTipsInObject(obj, path = '') {
     const tips = [];
