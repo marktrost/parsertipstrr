@@ -3,22 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Мой сайт из компьютерного клуба</title>
+    <title>Tipstrr Parser - Парсер прогнозов</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
 </head>
 <body>
     <header>
         <nav>
             <div class="logo">
-                <i class="fas fa-laptop-code"></i>
-                <span>DevClub</span>
+                <i class="fas fa-chart-line"></i>
+                <span>Tipstrr Parser</span>
             </div>
             <ul class="nav-links">
                 <li><a href="#home"><i class="fas fa-home"></i> Главная</a></li>
-                <li><a href="#about"><i class="fas fa-user"></i> Обо мне</a></li>
-                <li><a href="#projects"><i class="fas fa-code"></i> Проекты</a></li>
-                <li><a href="#contact"><i class="fas fa-envelope"></i> Контакты</a></li>
+                <li><a href="#parser"><i class="fas fa-download"></i> Парсер</a></li>
+                <li><a href="#results"><i class="fas fa-table"></i> Результаты</a></li>
+                <li><a href="#instructions"><i class="fas fa-question-circle"></i> Инструкция</a></li>
             </ul>
         </nav>
     </header>
@@ -26,119 +27,236 @@
     <main>
         <section id="home" class="hero">
             <div class="hero-content">
-                <h1>Привет! <span class="wave">👋</span></h1>
-                <h2>Я создал этот сайт прямо из компьютерного клуба</h2>
-                <p>И сейчас разверну его на Render через GitHub</p>
-                <div class="cta-buttons">
-                    <a href="#projects" class="btn primary">Смотреть проекты</a>
-                    <a href="#contact" class="btn secondary">Связаться со мной</a>
+                <h1>Парсер прогнозов <span class="highlight">Tipstrr</span></h1>
+                <h2>Получайте данные прямо в Excel без сервера</h2>
+                <p>Просто введите URL страницы с прогнозами и скачайте Excel файл</p>
+                <div class="features">
+                    <div class="feature">
+                        <i class="fas fa-bolt"></i>
+                        <span>Работает в браузере</span>
+                    </div>
+                    <div class="feature">
+                        <i class="fas fa-shield-alt"></i>
+                        <span>Без регистрации</span>
+                    </div>
+                    <div class="feature">
+                        <i class="fas fa-file-excel"></i>
+                        <span>Excel экспорт</span>
+                    </div>
                 </div>
             </div>
             <div class="hero-image">
-                <div class="code-window">
-                    <div class="window-header">
-                        <div class="window-buttons">
-                            <span class="close"></span>
-                            <span class="minimize"></span>
-                            <span class="maximize"></span>
+                <div class="demo-card">
+                    <div class="demo-header">
+                        <i class="fas fa-magic"></i> Как это работает
+                    </div>
+                    <div class="demo-steps">
+                        <div class="step">
+                            <div class="step-number">1</div>
+                            <p>Введите URL страницы tipstrr</p>
                         </div>
-                        <span class="window-title">terminal</span>
-                    </div>
-                    <div class="window-content">
-                        <p>$ git commit -m "Сайт создан!"</p>
-                        <p>$ git push origin main</p>
-                        <p class="blink">▌</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section id="about" class="section">
-            <h2><i class="fas fa-star"></i> Обо мне</h2>
-            <div class="about-content">
-                <div class="card">
-                    <i class="fas fa-rocket"></i>
-                    <h3>Быстрый старт</h3>
-                    <p>Создание сайта прямо из браузера без установки программ</p>
-                </div>
-                <div class="card">
-                    <i class="fas fa-cloud-upload-alt"></i>
-                    <h3>Деплой на Render</h3>
-                    <p>Бесплатный хостинг для статических сайтов</p>
-                </div>
-                <div class="card">
-                    <i class="fas fa-magic"></i>
-                    <h3>Простота</h3>
-                    <p>Ничего лишнего, только HTML, CSS и JavaScript</p>
-                </div>
-            </div>
-        </section>
-
-        <section id="projects" class="section dark">
-            <h2><i class="fas fa-code"></i> Мои проекты</h2>
-            <div class="projects-grid">
-                <div class="project-card">
-                    <div class="project-icon">
-                        <i class="fas fa-globe"></i>
-                    </div>
-                    <h3>Этот сайт</h3>
-                    <p>Создан и развернут за 30 минут</p>
-                    <div class="tech-tags">
-                        <span>HTML</span>
-                        <span>CSS</span>
-                        <span>JavaScript</span>
-                    </div>
-                </div>
-                <div class="project-card">
-                    <div class="project-icon">
-                        <i class="fas fa-gamepad"></i>
-                    </div>
-                    <h3>Игра на JS</h3>
-                    <p>Простая игра, написанная на чистом JavaScript</p>
-                    <div class="tech-tags">
-                        <span>JavaScript</span>
-                        <span>Canvas</span>
-                    </div>
-                </div>
-                <div class="project-card">
-                    <div class="project-icon">
-                        <i class="fas fa-mobile-alt"></i>
-                    </div>
-                    <h3>Адаптивный дизайн</h3>
-                    <p>Сайт, который отлично выглядит на всех устройствах</p>
-                    <div class="tech-tags">
-                        <span>CSS3</span>
-                        <span>Flexbox</span>
+                        <div class="step">
+                            <div class="step-number">2</div>
+                            <p>Парсер извлекает данные</p>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">3</div>
+                            <p>Скачиваете Excel файл</p>
+                        </div>
                     </div>
                 </div>
             </div>
         </section>
 
-        <section id="contact" class="section">
-            <h2><i class="fas fa-envelope"></i> Контакты</h2>
-            <div class="contact-info">
-                <p><i class="fas fa-map-marker-alt"></i> Создано в компьютерном клубе</p>
-                <p><i class="fas fa-clock"></i> В любое время, когда есть доступ к ПК</p>
-                <p><i class="fas fa-github"></i> GitHub: ваш-логин</p>
-            </div>
+        <section id="parser" class="section">
+            <h2><i class="fas fa-download"></i> Парсинг данных</h2>
             
-            <div class="counter">
-                <p><i class="fas fa-eye"></i> Посетители сайта:</p>
-                <h3 id="visit-count">0</h3>
+            <div class="parser-container">
+                <div class="input-group">
+                    <label for="url-input">
+                        <i class="fas fa-link"></i> URL страницы Tipstrr:
+                    </label>
+                    <input 
+                        type="text" 
+                        id="url-input" 
+                        placeholder="https://www.tipstrr.com/tipster/username"
+                        value=""
+                    >
+                    <div class="examples">
+                        <small>Примеры: </small>
+                        <button class="example-btn" data-url="https://www.tipstrr.com/tipster/example">Пример 1</button>
+                        <button class="example-btn" data-url="https://www.tipstrr.com/tipster/demo">Пример 2</button>
+                    </div>
+                </div>
+
+                <div class="settings">
+                    <h3><i class="fas fa-cog"></i> Настройки парсинга</h3>
+                    
+                    <div class="settings-grid">
+                        <div class="setting">
+                            <input type="checkbox" id="parse-stats" checked>
+                            <label for="parse-stats">Статистика</label>
+                        </div>
+                        <div class="setting">
+                            <input type="checkbox" id="parse-history" checked>
+                            <label for="parse-history">История ставок</label>
+                        </div>
+                        <div class="setting">
+                            <input type="checkbox" id="parse-upcoming" checked>
+                            <label for="parse-upcoming">Предстоящие</label>
+                        </div>
+                    </div>
+
+                    <div class="proxy-settings">
+                        <label for="proxy-select">
+                            <i class="fas fa-server"></i> Режим работы:
+                        </label>
+                        <select id="proxy-select">
+                            <option value="direct">Прямой запрос (может не работать)</option>
+                            <option value="corsproxy">CORS Прокси (рекомендуется)</option>
+                            <option value="mock">Тестовые данные</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button id="parse-btn" class="btn primary">
+                        <i class="fas fa-play"></i> Начать парсинг
+                    </button>
+                    <button id="clear-btn" class="btn secondary">
+                        <i class="fas fa-trash"></i> Очистить
+                    </button>
+                </div>
+
+                <div class="loading" id="loading" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>Парсинг данных...</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="results" class="section dark">
+            <h2><i class="fas fa-table"></i> Результаты</h2>
+            
+            <div class="results-header">
+                <div class="stats">
+                    <div class="stat">
+                        <i class="fas fa-database"></i>
+                        <span>Найдено записей: <strong id="record-count">0</strong></span>
+                    </div>
+                    <div class="stat">
+                        <i class="fas fa-clock"></i>
+                        <span>Время парсинга: <strong id="parse-time">0</strong> сек</span>
+                    </div>
+                </div>
+                
+                <button id="export-btn" class="btn success" disabled>
+                    <i class="fas fa-file-excel"></i> Экспорт в Excel
+                </button>
+            </div>
+
+            <div class="table-container">
+                <table id="data-table">
+                    <thead>
+                        <tr>
+                            <th>Дата</th>
+                            <th>Событие</th>
+                            <th>Прогноз</th>
+                            <th>Коэффициент</th>
+                            <th>Результат</th>
+                            <th>Прибыль</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <tr class="empty-row">
+                            <td colspan="6">Нет данных. Начните парсинг.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="additional-export">
+                <h3><i class="fas fa-download"></i> Дополнительные форматы</h3>
+                <div class="export-buttons">
+                    <button id="export-csv" class="btn secondary" disabled>
+                        <i class="fas fa-file-csv"></i> CSV
+                    </button>
+                    <button id="export-json" class="btn secondary" disabled>
+                        <i class="fas fa-file-code"></i> JSON
+                    </button>
+                    <button id="export-print" class="btn secondary">
+                        <i class="fas fa-print"></i> Печать
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section id="instructions" class="section">
+            <h2><i class="fas fa-question-circle"></i> Инструкция</h2>
+            
+            <div class="instructions-grid">
+                <div class="instruction-card">
+                    <div class="instruction-icon">
+                        <i class="fas fa-search"></i>
+                    </div>
+                    <h3>Шаг 1: Найдите страницу</h3>
+                    <p>Перейдите на tipstrr.com и найдите страницу tipster'а с прогнозами. Скопируйте URL из адресной строки.</p>
+                </div>
+                
+                <div class="instruction-card">
+                    <div class="instruction-icon">
+                        <i class="fas fa-paste"></i>
+                    </div>
+                    <h3>Шаг 2: Вставьте URL</h3>
+                    <p>Вставьте скопированный URL в поле ввода на нашем сайте. Используйте CORS прокси для обхода ограничений.</p>
+                </div>
+                
+                <div class="instruction-card">
+                    <div class="instruction-icon">
+                        <i class="fas fa-download"></i>
+                    </div>
+                    <h3>Шаг 3: Скачайте Excel</h3>
+                    <p>Нажмите "Начать парсинг", дождитесь обработки и скачайте данные в Excel формате.</p>
+                </div>
+            </div>
+
+            <div class="warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                <div>
+                    <h4>Важная информация</h4>
+                    <p>• Парсинг работает полностью в вашем браузере</p>
+                    <p>• Данные не сохраняются на сервере</p>
+                    <p>• Для обхода CORS используйте режим "CORS Прокси"</p>
+                    <p>• Используйте ответственно и в соответствии с правилами сайта</p>
+                </div>
             </div>
         </section>
     </main>
 
     <footer>
-        <p>Создано с <i class="fas fa-heart"></i> прямо в компьютерном клубе</p>
-        <p>© 2023 | Развернуто на <a href="https://render.com" target="_blank">Render</a></p>
-        <div class="social">
-            <a href="#"><i class="fab fa-github"></i></a>
-            <a href="#"><i class="fab fa-codepen"></i></a>
-            <a href="#"><i class="fas fa-envelope"></i></a>
+        <div class="footer-content">
+            <div class="footer-section">
+                <h4><i class="fas fa-info-circle"></i> О проекте</h4>
+                <p>Парсер для tipstrr.com. Работает полностью в браузере.</p>
+            </div>
+            <div class="footer-section">
+                <h4><i class="fas fa-code"></i> Технологии</h4>
+                <p>JavaScript • SheetJS • CORS прокси • Render</p>
+            </div>
+            <div class="footer-section">
+                <h4><i class="fas fa-exclamation-circle"></i> Отказ от ответственности</h4>
+                <p>Только для образовательных целей. Используйте ответственно.</p>
+            </div>
+        </div>
+        <div class="copyright">
+            <p>© 2023 Tipstrr Parser | Создано в компьютерном клубе</p>
+            <p>Развернуто на <a href="https://render.com" target="_blank">Render</a></p>
         </div>
     </footer>
 
+    <!-- Библиотеки -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
