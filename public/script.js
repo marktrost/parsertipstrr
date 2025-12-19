@@ -1,15 +1,3 @@
-let parsedData = [];
-
-// Инициализация
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Парсер загружен');
-    document.getElementById('parse-btn').addEventListener('click', parseData);
-    document.getElementById('export-btn').addEventListener('click', exportToExcel);
-    
-    // Включаем кнопку теста для отладки
-    window.testParse = testParse;
-});
-
 // Парсинг данных
 async function parseData() {
     const url = document.getElementById('url-input').value;
@@ -18,16 +6,32 @@ async function parseData() {
     showLoading(true);
     
     try {
-        console.log('Загружаю страницу...');
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-        const response = await fetch(proxyUrl);
+        console.log('Загружаю через прокси...');
+        
+        // Используем другой прокси или метод
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+        // ИЛИ альтернативный CORS прокси
+        // const proxyUrl = `https://cors-anywhere.herokuapp.com/${url}`;
+        
+        const response = await fetch(proxyUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
         
         if (!response.ok) throw new Error(`HTTP ошибка: ${response.status}`);
         
-        const html = await response.text();
-        console.log('HTML загружен, размер:', html.length, 'символов');
+        const data = await response.json();
+        const html = data.contents || data;
+        console.log('HTML получен, размер:', html.length, 'символов');
         
-        parsedData = extractAndParseData(html, count);
+        // Попробуем другой метод поиска данных
+        parsedData = extractAndParseDataV2(html, count);
+        
+        // Если не нашли, пробуем альтернативный метод
+        if (parsedData.length === 0) {
+            parsedData = extractAndParseDataFallback(html, count);
+        }
         
         showResults();
         document.getElementById('export-btn').disabled = parsedData.length === 0;
@@ -35,7 +39,7 @@ async function parseData() {
         console.log(`Найдено записей: ${parsedData.length}`);
         
         if (parsedData.length === 0) {
-            alert('На странице не найдено данных о прогнозах. Показаны демо-данные.');
+            alert('На странице не найдено данных. Возможно, требуется авторизация или структура страницы изменилась.');
             loadDemoData();
         } else {
             alert(`Успешно! Распарсено ${parsedData.length} прогнозов.`);
@@ -43,348 +47,150 @@ async function parseData() {
         
     } catch (error) {
         console.error('Критическая ошибка:', error);
-        alert('Не удалось загрузить страницу. Проверьте URL, интернет или попробуйте позже.\n' + error.message);
+        alert('Ошибка: ' + error.message);
         loadDemoData();
     } finally {
         showLoading(false);
     }
 }
 
-// Извлечение и парсинг данных из HTML
-function extractAndParseData(html, limit) {
+// Альтернативный метод парсинга V2
+function extractAndParseDataV2(html, limit) {
     const data = [];
     
     try {
-        // Ищем скрипт с INITIAL_STATE
-        const scriptRegex = /<script[^>]*>\s*window\.__INITIAL_STATE__\s*=\s*({[\s\S]*?})\s*;?\s*<\/script>/i;
-        const match = html.match(scriptRegex);
+        // Ищем JSON данные в скриптах
+        const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+        const scripts = html.match(scriptRegex) || [];
         
-        if (match && match[1]) {
-            console.log('Найден скрипт с INITIAL_STATE');
-            
-            let jsonStr = match[1];
-            let openBraces = 0;
-            let endIndex = 0;
-            
-            // Находим конец JSON объекта
-            for (let i = 0; i < jsonStr.length; i++) {
-                if (jsonStr[i] === '{') openBraces++;
-                if (jsonStr[i] === '}') openBraces--;
-                if (openBraces === 0) {
-                    endIndex = i + 1;
-                    break;
-                }
-            }
-            
-            jsonStr = jsonStr.substring(0, endIndex);
-            
-            try {
-                const initialState = JSON.parse(jsonStr);
+        for (const script of scripts) {
+            if (script.includes('__INITIAL_STATE__') || script.includes('PORTFOLIO')) {
+                console.log('Найден скрипт с данными');
                 
-                // Ищем данные в PORTFOLIO_TIP_CACHED
-                if (initialState.PORTFOLIO_TIP_CACHED) {
-                    console.log('Обнаружен PORTFOLIO_TIP_CACHED');
-                    const tipsCache = initialState.PORTFOLIO_TIP_CACHED;
-                    let processed = 0;
-                    
-                    for (const key in tipsCache) {
-                        if (processed >= limit) break;
+                // Пытаемся извлечь JSON
+                const jsonMatch = script.match(/{[\s\S]+}/);
+                if (jsonMatch) {
+                    try {
+                        const jsonStr = jsonMatch[0]
+                            .replace(/&quot;/g, '"')
+                            .replace(/&#x27;/g, "'");
                         
-                        const tip = tipsCache[key];
-                        const parsedTip = parseSingleTip(tip);
+                        const jsonData = JSON.parse(jsonStr);
+                        console.log('JSON успешно распарсен:', Object.keys(jsonData));
                         
-                        if (parsedTip && parsedTip.event) {
-                            data.push(parsedTip);
-                            processed++;
-                        }
-                    }
-                    console.log(`Обработано из кеша: ${data.length}`);
-                }
-                
-                // Добираем из PORTFOLIO_COMPLETED_TIPS
-                if (data.length < limit && initialState.PORTFOLIO_COMPLETED_TIPS) {
-                    console.log('Добираем из PORTFOLIO_COMPLETED_TIPS');
-                    const completed = initialState.PORTFOLIO_COMPLETED_TIPS;
-                    
-                    for (const portfolioKey in completed) {
-                        const tipsArray = completed[portfolioKey];
+                        // Ищем данные в разных возможных местах
+                        const possiblePaths = [
+                            'PORTFOLIO_TIP_CACHED',
+                            'PORTFOLIO_COMPLETED_TIPS',
+                            'tips',
+                            'completedTips',
+                            'data'
+                        ];
                         
-                        for (const shortTip of tipsArray) {
-                            if (data.length >= limit) break;
-                            
-                            const cacheKey = `${shortTip.portfolioReference}_${shortTip.reference}`;
-                            if (initialState.PORTFOLIO_TIP_CACHED && initialState.PORTFOLIO_TIP_CACHED[cacheKey]) {
-                                const fullTip = initialState.PORTFOLIO_TIP_CACHED[cacheKey];
-                                const parsedTip = parseSingleTip(fullTip);
-                                if (parsedTip) data.push(parsedTip);
+                        for (const path of possiblePaths) {
+                            if (jsonData[path]) {
+                                console.log(`Найдены данные в ${path}`);
+                                const tips = extractTipsFromObject(jsonData[path], limit);
+                                data.push(...tips);
+                                break;
                             }
                         }
+                        
+                    } catch (e) {
+                        console.log('Не удалось распарсить JSON напрямую');
                     }
                 }
-                
-            } catch (jsonError) {
-                console.error('Ошибка парсинга JSON из скрипта:', jsonError);
             }
-        } else {
-            console.log('Скрипт с INITIAL_STATE не найден, пробую альтернативный поиск');
+        }
+        
+        // Если не нашли в скриптах, ищем в data-атрибутах
+        if (data.length === 0) {
+            const dataRegex = /data-tip=['"]([^'"]+)['"]/gi;
+            let match;
+            while ((match = dataRegex.exec(html)) !== null && data.length < limit) {
+                try {
+                    const tipData = JSON.parse(match[1]);
+                    const parsed = parseSingleTip(tipData);
+                    if (parsed) data.push(parsed);
+                } catch (e) {
+                    // Пропускаем некорректные данные
+                }
+            }
         }
         
     } catch (error) {
-        console.error('Ошибка в extractAndParseData:', error);
+        console.error('Ошибка в extractAndParseDataV2:', error);
+    }
+    
+    return data.slice(0, limit);
+}
+
+// Fallback метод - парсим HTML структуру
+function extractAndParseDataFallback(html, limit) {
+    const data = [];
+    
+    try {
+        // Создаем временный DOM
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        // Ищем таблицы, списки прогнозов
+        const rows = doc.querySelectorAll('tr, .tip-item, .prediction, [class*="tip"], [class*="prediction"]');
+        
+        console.log(`Найдено элементов: ${rows.length}`);
+        
+        for (let i = 0; i < Math.min(rows.length, limit); i++) {
+            const row = rows[i];
+            const text = row.textContent.trim();
+            
+            if (text.length > 50) { // Фильтруем мусор
+                const tip = parseFromHTML(row);
+                if (tip) data.push(tip);
+            }
+        }
+        
+    } catch (error) {
+        console.error('Ошибка в fallback парсере:', error);
     }
     
     return data;
 }
 
-// Парсинг одного прогноза
-function parseSingleTip(tipObj) {
+// Парсинг из HTML элемента
+function parseFromHTML(element) {
     try {
         const tip = {};
+        const text = element.textContent.trim();
         
-        // Дата
-        if (tipObj.tipDate) {
-            const date = new Date(tipObj.tipDate);
-            tip.date = date.toISOString().split('T')[0];
-        } else if (tipObj.dateAdded) {
-            const date = new Date(tipObj.dateAdded);
-            tip.date = date.toISOString().split('T')[0];
+        // Простая эвристика для извлечения данных
+        const dateMatch = text.match(/\d{4}-\d{2}-\d{2}|\d{2}\.\d{2}\.\d{4}/);
+        if (dateMatch) tip.date = dateMatch[0];
+        
+        // Ищем название события (обычно содержит vs или -)
+        const eventMatch = text.match(/([A-Za-z0-9\s\.\-]+)(?:\s+vs\s+|\s+-\s+)([A-Za-z0-9\s\.\-]+)/);
+        if (eventMatch) {
+            tip.event = `${eventMatch[1]} v ${eventMatch[2]}`;
         }
         
-        // Название матча
-        tip.event = tipObj.title || 'Неизвестный матч';
+        // Ищем коэффициенты (числа с точкой)
+        const oddsMatch = text.match(/\d+\.\d{2}/);
+        if (oddsMatch) tip.odds = oddsMatch[0];
         
-        // Прогноз и коэффициент
-        if (tipObj.tipBetItem && tipObj.tipBetItem.length > 0) {
-            const betItem = tipObj.tipBetItem[0];
-            tip.prediction = `${betItem.marketText || 'Прогноз'} • ${betItem.betText || ''}`;
-            tip.odds = betItem.finalOdds || betItem.createdOdds || '';
-        } else {
-            tip.prediction = 'Данные о прогнозе отсутствуют';
-            tip.odds = '';
-        }
-        
-        // Результат
-        if (tipObj.result === 1) {
+        // Определяем результат по символам
+        if (text.includes('✅') || text.includes('WON') || text.includes('WIN')) {
             tip.result = '✅';
-        } else if (tipObj.result === 3) {
+        } else if (text.includes('❌') || text.includes('LOST') || text.includes('LOSS')) {
             tip.result = '❌';
         } else {
             tip.result = '➖';
         }
         
-        // Прибыль
-        if (tipObj.profit !== undefined && tipObj.profit !== null) {
-            if (tipObj.profit > 0) {
-                tip.profit = `+£${tipObj.profit.toFixed(2)}`;
-            } else if (tipObj.profit < 0) {
-                tip.profit = `-£${Math.abs(tipObj.profit).toFixed(2)}`;
-            } else {
-                tip.profit = '£0.00';
-            }
-        } else {
-            tip.profit = '—';
-        }
-        
-        // Ставка
-        if (tipObj.totalStake) {
-            tip.stake = `£${tipObj.totalStake}`;
-        }
+        tip.prediction = 'Извлечено из HTML';
         
         return tip;
         
     } catch (error) {
-        console.error('Ошибка парсинга объекта прогноза:', error);
+        console.error('Ошибка parseFromHTML:', error);
         return null;
     }
 }
-
-// Показать результаты
-function showResults() {
-    const tbody = document.getElementById('results-body');
-    const countSpan = document.getElementById('count');
-    
-    if (!tbody) {
-        console.error('Не найден tbody');
-        return;
-    }
-    
-    if (parsedData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5">Нет данных</td></tr>';
-        if (countSpan) countSpan.textContent = '0';
-        return;
-    }
-    
-    let html = '';
-    
-    parsedData.forEach(item => {
-        html += `
-            <tr>
-                <td>${item.date || '-'}</td>
-                <td>${item.event || '-'}</td>
-                <td>${item.prediction || '-'}</td>
-                <td>${item.odds || '-'}</td>
-                <td class="${item.result === '✅' ? 'success' : item.result === '❌' ? 'error' : ''}">
-                    ${item.result || '-'}
-                </td>
-            </tr>
-        `;
-    });
-    
-    tbody.innerHTML = html;
-    if (countSpan) countSpan.textContent = parsedData.length;
-}
-
-// Экспорт в Excel
-function exportToExcel() {
-    if (parsedData.length === 0) {
-        alert('Нет данных для экспорта');
-        return;
-    }
-    
-    try {
-        const exportData = parsedData.map(item => ({
-            'Дата': item.date || '',
-            'Матч': item.event || '',
-            'Прогноз': item.prediction || '',
-            'Коэффициент': item.odds || '',
-            'Результат': item.result || '',
-            'Прибыль': item.profit || '',
-            'Ставка': item.stake || ''
-        }));
-        
-        const ws = XLSX.utils.json_to_sheet(exportData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Прогнозы");
-        
-        const fileName = `tipstrr_${new Date().toISOString().slice(0,10)}.xlsx`;
-        XLSX.writeFile(wb, fileName);
-        
-        alert(`Файл "${fileName}" сохранен!`);
-        
-    } catch (error) {
-        alert('Ошибка экспорта: ' + error.message);
-    }
-}
-
-// Показать/скрыть загрузку
-function showLoading(show) {
-    const loading = document.getElementById('loading');
-    const btn = document.getElementById('parse-btn');
-    
-    if (!loading || !btn) return;
-    
-    if (show) {
-        loading.style.display = 'block';
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Парсинг...';
-    } else {
-        loading.style.display = 'none';
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-play"></i> Парсить';
-    }
-}
-
-// Загрузка демо-данных
-function loadDemoData() {
-    parsedData = [
-        {
-            date: '2025-12-19',
-            event: 'Al Arabi v Al-Batin',
-            prediction: 'Match winner • Al-Batin',
-            odds: '2.21',
-            result: '❌',
-            profit: '-£1.00',
-            stake: '£1'
-        },
-        {
-            date: '2025-12-19',
-            event: 'Kocaelispor v Antalyaspor',
-            prediction: 'Match winner • Kocaelispor',
-            odds: '1.63',
-            result: '✅',
-            profit: '+£0.63',
-            stake: '£1'
-        },
-        {
-            date: '2025-12-19',
-            event: 'Marseille v Toulouse U19',
-            prediction: 'Match winner • Marseille',
-            odds: '1.70',
-            result: '✅',
-            profit: '+£0.70',
-            stake: '£1'
-        },
-        {
-            date: '2025-12-18',
-            event: 'Mainz v Samsunspor',
-            prediction: 'Match winner • Samsunspor',
-            odds: '3.50',
-            result: '❌',
-            profit: '-£1.00',
-            stake: '£1'
-        }
-    ];
-    
-    showResults();
-    document.getElementById('export-btn').disabled = false;
-}
-
-// Тестовая функция для отладки
-async function testParse() {
-    console.log('=== ТЕСТ ПАРСЕРА ===');
-    console.log('Тест: Прямой запрос к Tipstrr...');
-    
-    try {
-        const testUrl = 'https://tipstrr.com/tipster/freguli/results';
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(testUrl)}`;
-        
-        const response = await fetch(proxyUrl);
-        const html = await response.text();
-        
-        console.log('HTML получен, размер:', html.length, 'символов');
-        
-        // Ищем JSON
-        const jsonMatch = html.match(/"PORTFOLIO_TIP_CACHED"[^{]+\{[\s\S]+?\}\s*\}/);
-        if (jsonMatch) {
-            console.log('JSON найден в HTML');
-            console.log('Длина JSON:', jsonMatch[0].length);
-            
-            const data = extractAndParseData(html, 10);
-            console.log('Извлечено записей:', data.length);
-            
-            if (data.length > 0) {
-                console.log('Первая запись:', data[0]);
-                parsedData = data;
-                showResults();
-                alert('Тест успешен! Найдено данных: ' + data.length);
-                return true;
-            }
-        }
-        
-        // Ищем в скриптах
-        const scriptTags = html.match(/<script[^>]*>[\s\S]*?<\/script>/gi);
-        if (scriptTags) {
-            console.log('Найдено скриптов:', scriptTags.length);
-            
-            for (let i = 0; i < scriptTags.length; i++) {
-                if (scriptTags[i].includes('PORTFOLIO_TIP_CACHED')) {
-                    console.log('Найден скрипт с данными:', i);
-                    break;
-                }
-            }
-        }
-        
-    } catch (error) {
-        console.error('Тест ошибка:', error);
-    }
-    
-    console.log('Тест 2: Загружаю демо-данные');
-    loadDemoData();
-    
-    return false;
-}
-
-// Авто-тест при загрузке
-setTimeout(() => {
-    console.log('Парсер готов. Нажмите "Парсить" или вызовите testParse() в консоли.');
-}, 1000);
