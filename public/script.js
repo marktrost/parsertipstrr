@@ -18,46 +18,403 @@ async function parseData() {
     showLoading(true);
     
     try {
-        console.log('Загружаю страницу...');
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-        const response = await fetch(proxyUrl);
+        console.log('🔄 Пробую новый метод загрузки...');
         
-        if (!response.ok) throw new Error(`HTTP ошибка: ${response.status}`);
+        // Пробуем разные подходы
+        let html = '';
         
-        const html = await response.text();
-        console.log('HTML загружен, размер:', html.length, 'символов');
+        // Метод 1: Через альтернативный прокси
+        try {
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+            const response = await fetch(proxyUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Referer': 'https://tipstrr.com/'
+                }
+            });
+            
+            if (response.ok) {
+                html = await response.text();
+                console.log('✅ Метод 1 сработал');
+            }
+        } catch (e) {
+            console.log('❌ Метод 1 не сработал:', e.message);
+        }
         
-        // Сохраняем HTML для отладки
-        window.lastHTML = html;
+        // Метод 2: Через другой прокси (если первый не сработал)
+        if (!html) {
+            try {
+                const proxyUrl = `https://corsproxy.org/?${encodeURIComponent(url)}`;
+                const response = await fetch(proxyUrl);
+                if (response.ok) {
+                    html = await response.text();
+                    console.log('✅ Метод 2 сработал');
+                }
+            } catch (e) {
+                console.log('❌ Метод 2 не сработал');
+            }
+        }
         
-        // Пробуем разные методы парсинга
-        parsedData = extractAndParseData(html, count);
+        // Метод 3: Прямой запрос (только если на том же origin)
+        if (!html) {
+            try {
+                const response = await fetch(url);
+                if (response.ok) {
+                    html = await response.text();
+                    console.log('✅ Метод 3 сработал');
+                }
+            } catch (e) {
+                console.log('❌ Метод 3 не сработал');
+            }
+        }
         
-        // Если не нашли, пробуем альтернативный метод
+        if (!html) {
+            throw new Error('Не удалось загрузить страницу ни одним методом');
+        }
+        
+        console.log('📄 HTML загружен, размер:', html.length, 'символов');
+        
+        // Сохраняем для анализа
+        window.lastParsedHTML = html;
+        
+        // Показываем первые 2000 символов для отладки
+        console.log('Первые 2000 символов HTML:', html.substring(0, 2000));
+        
+        // Пробуем парсить
+        parsedData = extractAndParseDataNew(html, count);
+        
+        // Если не нашли, пробуем найти данные по-другому
         if (parsedData.length === 0) {
-            console.log('Первый метод не сработал, пробую альтернативный...');
-            parsedData = extractAndParseDataV2(html, count);
+            console.log('🔍 Ищу данные альтернативным методом...');
+            parsedData = searchForTipsInHTML(html, count);
         }
         
         showResults();
         document.getElementById('export-btn').disabled = parsedData.length === 0;
         
-        console.log(`Найдено записей: ${parsedData.length}`);
+        console.log(`📊 Найдено записей: ${parsedData.length}`);
         
         if (parsedData.length === 0) {
-            alert('На странице не найдено данных о прогнозах. Показаны демо-данные.');
+            console.warn('⚠️ Данные не найдены. Анализирую HTML...');
+            analyzeHTML(html);
+            
+            // Предлагаем ручной анализ
+            if (confirm('Данные не найдены автоматически. Хотите проанализировать HTML вручную?')) {
+                showHTMLAnalysis(html);
+            }
+            
+            alert('Данные не найдены. Возможно:\n1. Требуется авторизация\n2. Страница динамическая\n3. Структура изменилась\n\nПоказаны демо-данные.');
             loadDemoData();
         } else {
-            alert(`Успешно! Распарсено ${parsedData.length} прогнозов.`);
+            alert(`✅ Успешно! Найдено ${parsedData.length} прогнозов.`);
         }
         
     } catch (error) {
-        console.error('Критическая ошибка:', error);
-        alert('Не удалось загрузить страницу. Проверьте URL, интернет или попробуйте позже.\n' + error.message);
+        console.error('❌ Критическая ошибка:', error);
+        alert('Ошибка: ' + error.message + '\nЗагружаю демо-данные.');
         loadDemoData();
     } finally {
         showLoading(false);
     }
+}
+
+// НОВАЯ ФУНКЦИЯ для парсинга
+function extractAndParseDataNew(html, limit) {
+    console.log('🔍 extractAndParseDataNew запущен');
+    const data = [];
+    
+    try {
+        // МЕТОД 1: Ищем JSON данные в разных форматах
+        const jsonPatterns = [
+            /window\.__INITIAL_STATE__\s*=\s*({[\s\S]+?});?\s*<\/script>/i,
+            /"PORTFOLIO_TIP_CACHED"[^{]+\{[\s\S]+?\}\s*\}/i,
+            /{"tips":\[[\s\S]+?\]}/i,
+            /{"data":\[[\s\S]+?\]}/i,
+            /{"predictions":\[[\s\S]+?\]}/i
+        ];
+        
+        for (const pattern of jsonPatterns) {
+            const match = html.match(pattern);
+            if (match) {
+                console.log(`✅ Найден паттерн: ${pattern.toString().substring(0, 50)}...`);
+                
+                try {
+                    let jsonStr = match[1] || match[0];
+                    
+                    // Чистим JSON строку
+                    jsonStr = jsonStr
+                        .replace(/\\"/g, '"')
+                        .replace(/\\'/g, "'")
+                        .replace(/\\n/g, '')
+                        .replace(/\\t/g, '')
+                        .trim();
+                    
+                    // Если это не полный объект, пытаемся восстановить
+                    if (!jsonStr.startsWith('{')) {
+                        jsonStr = '{' + jsonStr;
+                    }
+                    if (!jsonStr.endsWith('}')) {
+                        jsonStr = jsonStr + '}';
+                    }
+                    
+                    const jsonData = JSON.parse(jsonStr);
+                    console.log('✅ JSON успешно распарсен, ключи:', Object.keys(jsonData));
+                    
+                    // Рекурсивно ищем прогнозы
+                    const foundTips = findTipsInObject(jsonData);
+                    console.log(`✅ Найдено прогнозов в объекте: ${foundTips.length}`);
+                    
+                    for (const tip of foundTips.slice(0, limit)) {
+                        const parsed = parseSingleTip(tip);
+                        if (parsed) data.push(parsed);
+                    }
+                    
+                    if (data.length > 0) break;
+                    
+                } catch (e) {
+                    console.log('❌ Ошибка парсинга JSON:', e.message);
+                }
+            }
+        }
+        
+        // МЕТОД 2: Ищем данные в script тегах
+        if (data.length === 0) {
+            const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+            let match;
+            while ((match = scriptRegex.exec(html)) !== null) {
+                const scriptContent = match[1];
+                if (scriptContent.includes('tip') || scriptContent.includes('prediction')) {
+                    console.log('🔍 Найден скрипт с данными');
+                    
+                    // Ищем объекты с данными
+                    const objRegex = /{[^{}]*(["']?(title|event|date|odds|result|profit)["']?\s*:[^{}]*)+}/gi;
+                    let objMatch;
+                    while ((objMatch = objRegex.exec(scriptContent)) !== null && data.length < limit) {
+                        try {
+                            const objStr = objMatch[0]
+                                .replace(/(\w+):/g, '"$1":') // Добавляем кавычки к ключам
+                                .replace(/'/g, '"'); // Заменяем одинарные кавычки
+                            
+                            const tipObj = JSON.parse(objStr);
+                            const parsed = parseSingleTip(tipObj);
+                            if (parsed) data.push(parsed);
+                        } catch (e) {
+                            // Пропускаем некорректные
+                        }
+                    }
+                }
+            }
+        }
+        
+        // МЕТОД 3: Парсинг HTML таблиц
+        if (data.length === 0) {
+            const tableRegex = /<table[^>]*>([\s\S]*?)<\/table>/gi;
+            const tables = html.match(tableRegex) || [];
+            
+            console.log(`🔍 Найдено таблиц: ${tables.length}`);
+            
+            for (const table of tables.slice(0, 3)) { // Проверяем первые 3 таблицы
+                const rows = extractTableRows(table);
+                console.log(`📊 В таблице найдено строк: ${rows.length}`);
+                
+                for (const row of rows.slice(0, limit)) {
+                    const tip = parseTableRow(row);
+                    if (tip) data.push(tip);
+                }
+                
+                if (data.length > 0) break;
+            }
+        }
+        
+    } catch (error) {
+        console.error('❌ Ошибка в extractAndParseDataNew:', error);
+    }
+    
+    console.log(`📊 Итог: найдено ${data.length} записей`);
+    return data.slice(0, limit);
+}
+
+// Вспомогательные функции для нового парсера
+function findTipsInObject(obj, path = '') {
+    const tips = [];
+    
+    if (!obj || typeof obj !== 'object') return tips;
+    
+    // Если объект похож на прогноз
+    if (obj.title || obj.event || (obj.odds && obj.result !== undefined)) {
+        tips.push(obj);
+    }
+    
+    // Рекурсивный поиск
+    for (const key in obj) {
+        if (obj.hasOwnProperty(key)) {
+            const value = obj[key];
+            
+            // Проверяем массивы
+            if (Array.isArray(value)) {
+                for (const item of value) {
+                    tips.push(...findTipsInObject(item, `${path}.${key}[]`));
+                }
+            }
+            // Проверяем вложенные объекты
+            else if (value && typeof value === 'object') {
+                tips.push(...findTipsInObject(value, `${path}.${key}`));
+            }
+        }
+    }
+    
+    return tips;
+}
+
+function extractTableRows(tableHTML) {
+    const rows = [];
+    const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let match;
+    
+    while ((match = rowRegex.exec(tableHTML)) !== null) {
+        rows.push(match[1]);
+    }
+    
+    return rows;
+}
+
+function parseTableRow(rowHTML) {
+    try {
+        // Извлекаем ячейки
+        const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+        const cells = [];
+        let match;
+        
+        while ((match = cellRegex.exec(rowHTML)) !== null) {
+            // Очищаем HTML теги
+            const text = match[1]
+                .replace(/<[^>]*>/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+            
+            if (text) cells.push(text);
+        }
+        
+        if (cells.length < 3) return null;
+        
+        // Создаем объект прогноза
+        const tip = {};
+        
+        // Дата обычно в первой ячейке
+        if (cells[0].match(/\d{4}-\d{2}-\d{2}|\d{2}\.\d{2}\.\d{4}/)) {
+            tip.date = cells[0];
+        }
+        
+        // Событие
+        tip.event = cells[1] || cells[0];
+        
+        // Прогноз и коэффициенты
+        for (let i = 2; i < cells.length; i++) {
+            if (cells[i].match(/\d+\.\d{2}/)) {
+                tip.odds = cells[i].match(/\d+\.\d{2}/)[0];
+            }
+            if (cells[i].toLowerCase().includes('over') || cells[i].toLowerCase().includes('under') || 
+                cells[i].toLowerCase().includes('win') || cells[i].toLowerCase().includes('btts')) {
+                tip.prediction = cells[i];
+            }
+        }
+        
+        // Результат
+        const lastCell = cells[cells.length - 1];
+        if (lastCell.includes('✅') || /won|win|✓/i.test(lastCell)) {
+            tip.result = '✅';
+        } else if (lastCell.includes('❌') || /lost|loss|x/i.test(lastCell)) {
+            tip.result = '❌';
+        } else {
+            tip.result = '➖';
+        }
+        
+        return tip;
+        
+    } catch (e) {
+        console.log('❌ Ошибка парсинга строки таблицы:', e);
+        return null;
+    }
+}
+
+// Анализ HTML для отладки
+function analyzeHTML(html) {
+    console.log('=== АНАЛИЗ HTML ===');
+    console.log('Общий размер:', html.length, 'символов');
+    
+    // Проверяем наличие ключевых слов
+    const keywords = {
+        'INITIAL_STATE': html.includes('__INITIAL_STATE__'),
+        'PORTFOLIO': html.includes('PORTFOLIO'),
+        'tip': (html.match(/tip/gi) || []).length,
+        'prediction': (html.match(/prediction/gi) || []).length,
+        'odds': (html.match(/odds/gi) || []).length,
+        'table': (html.match(/<table/gi) || []).length,
+        'tr': (html.match(/<tr/gi) || []).length,
+        'td': (html.match(/<td/gi) || []).length
+    };
+    
+    console.log('Ключевые слова:', keywords);
+    
+    // Ищем все скрипты
+    const scriptCount = (html.match(/<script/gi) || []).length;
+    console.log('Скриптов на странице:', scriptCount);
+    
+    // Сохраняем HTML для ручного анализа
+    localStorage.setItem('last_tipstrr_html', html.substring(0, 10000));
+    console.log('HTML сохранен в localStorage для анализа');
+}
+
+// Функция для ручного анализа
+function showHTMLAnalysis(html) {
+    const analysisWindow = window.open('', '_blank');
+    analysisWindow.document.write(`
+        <html>
+        <head>
+            <title>Анализ HTML Tipstrr</title>
+            <style>
+                body { font-family: Arial; padding: 20px; }
+                pre { background: #f5f5f5; padding: 10px; overflow: auto; }
+                .section { margin: 20px 0; }
+            </style>
+        </head>
+        <body>
+            <h1>Анализ HTML</h1>
+            <div class="section">
+                <h3>Скрипты с данными:</h3>
+                <pre id="scripts"></pre>
+            </div>
+            <div class="section">
+                <h3>Таблицы:</h3>
+                <pre id="tables"></pre>
+            </div>
+            <div class="section">
+                <h3>Первые 5000 символов:</h3>
+                <pre>${html.substring(0, 5000).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+            </div>
+        </body>
+        </html>
+    `);
+    
+    // Анализируем скрипты
+    const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+    let match;
+    let scriptsHTML = '';
+    while ((match = scriptRegex.exec(html)) !== null) {
+        const content = match[1];
+        if (content.includes('tip') || content.includes('prediction') || content.includes('INITIAL_STATE')) {
+            scriptsHTML += content.substring(0, 1000) + '\n\n---\n\n';
+        }
+    }
+    analysisWindow.document.getElementById('scripts').textContent = scriptsHTML || 'Не найдено скриптов с данными';
+    
+    // Анализируем таблицы
+    const tableRegex = /<table[^>]*>([\s\S]*?)<\/table>/gi;
+    const tables = html.match(tableRegex) || [];
+    analysisWindow.document.getElementById('tables').textContent = 
+        tables.length > 0 ? tables[0].substring(0, 2000) : 'Таблицы не найдены';
 }
 
 // Извлечение и парсинг данных из HTML (основной метод)
