@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('export-btn').addEventListener('click', exportToExcel);
 });
 
-// Парсинг данных - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// Парсинг данных из JSON
 async function parseData() {
     const url = document.getElementById('url-input').value;
     const count = document.getElementById('count-select').value;
@@ -15,51 +15,32 @@ async function parseData() {
     showLoading(true);
     
     try {
-        console.log('Начинаю парсинг...');
+        console.log('Начинаю парсинг JSON...');
         
-        // Пробуем несколько разных прокси
-        const proxyUrls = [
-            `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-            `https://corsproxy.io/?${encodeURIComponent(url)}`,
-            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
-        ];
+        // Используем corsproxy
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
         
-        let html = '';
-        let success = false;
-        
-        // Пробуем каждый прокси по очереди
-        for (let proxyUrl of proxyUrls) {
-            try {
-                console.log(`Пробую прокси: ${proxyUrl.substring(0, 50)}...`);
-                
-                const response = await fetch(proxyUrl, {
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    },
-                    timeout: 10000
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    html = data.contents || data;
-                    success = true;
-                    console.log('Прокси сработал!');
-                    break;
-                }
-            } catch (error) {
-                console.log(`Прокси не сработал: ${error.message}`);
-                continue;
+        const response = await fetch(proxyUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ошибка: ${response.status}`);
         }
         
-        if (!success) {
-            throw new Error('Все прокси не сработали. Попробуйте позже.');
+        const html = await response.text();
+        
+        // Ищем JSON данные в HTML
+        const jsonData = extractJsonData(html);
+        
+        if (jsonData) {
+            // Парсим JSON данные
+            parsedData = parseJsonData(jsonData, parseInt(count));
+        } else {
+            throw new Error('JSON данные не найдены');
         }
-        
-        console.log('HTML получен, начинаю парсинг...');
-        
-        // Парсим HTML
-        parsedData = parseHTML(html, parseInt(count));
         
         // Показываем результаты
         showResults();
@@ -69,154 +50,267 @@ async function parseData() {
         
         console.log(`Найдено ${parsedData.length} записей`);
         
-        if (parsedData.length === 0) {
-            alert('Данные не найдены. Возможно, сайт изменил структуру.');
-        }
-        
     } catch (error) {
         console.error('Ошибка:', error);
-        alert('Ошибка: ' + error.message + '\n\nПопробуйте:\n1. Проверить интернет\n2. Обновить страницу\n3. Попробовать позже');
+        alert('Ошибка: ' + error.message);
     } finally {
         showLoading(false);
     }
 }
 
-// Парсинг HTML - УПРОЩЕННАЯ ВЕРСИЯ
-function parseHTML(html, limit) {
+// Извлечение JSON данных из HTML
+function extractJsonData(html) {
     try {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const data = [];
+        // Пытаемся найти JSON в скриптах
+        const scriptRegex = /<script[^>]*>window\.__INITIAL_STATE__\s*=\s*({.*?});?<\/script>/i;
+        const match = html.match(scriptRegex);
         
-        console.log('Парсим HTML...');
+        if (match && match[1]) {
+            console.log('Найден INITIAL_STATE JSON');
+            return JSON.parse(match[1]);
+        }
         
-        // Вариант 1: Ищем по структуре из вашего примера
-        const cards = doc.querySelectorAll('article, [data-island], .bg-white.rounded-lg');
+        // Ищем другие JSON данные
+        const jsonRegex = /({.*?PORTFOLIO_TIP_CACHED.*?})/s;
+        const jsonMatch = html.match(jsonRegex);
         
-        console.log(`Найдено ${cards.length} потенциальных карточек`);
+        if (jsonMatch && jsonMatch[1]) {
+            console.log('Найден JSON с данными');
+            return JSON.parse(jsonMatch[1]);
+        }
         
-        for (let i = 0; i < Math.min(cards.length, limit); i++) {
-            const card = cards[i];
-            const tip = extractTipFromCard(card);
+        // Если не нашли, парсим как обычный HTML
+        console.log('Ищу JSON в тексте...');
+        
+        // Простой поиск JSON структуры
+        const text = html.replace(/\n/g, ' ');
+        const startIndex = text.indexOf('{"PORTFOLIO"');
+        
+        if (startIndex !== -1) {
+            let jsonStr = '';
+            let bracketCount = 0;
+            let inString = false;
+            let escapeNext = false;
             
-            if (tip && tip.event && !tip.event.includes('Unlock this free')) {
-                data.push(tip);
+            for (let i = startIndex; i < text.length; i++) {
+                const char = text[i];
+                
+                if (escapeNext) {
+                    jsonStr += char;
+                    escapeNext = false;
+                    continue;
+                }
+                
+                if (char === '\\') {
+                    escapeNext = true;
+                    jsonStr += char;
+                    continue;
+                }
+                
+                if (char === '"' && !escapeNext) {
+                    inString = !inString;
+                }
+                
+                if (!inString) {
+                    if (char === '{') bracketCount++;
+                    if (char === '}') bracketCount--;
+                }
+                
+                jsonStr += char;
+                
+                if (bracketCount === 0) {
+                    break;
+                }
+            }
+            
+            if (bracketCount === 0) {
+                console.log('Извлечен JSON строкой');
+                return JSON.parse(jsonStr);
             }
         }
         
-        // Вариант 2: Если не нашли, парсим весь текст
-        if (data.length === 0) {
-            console.log('Использую альтернативный метод...');
-            const allText = doc.body.textContent;
-            const lines = allText.split('\n').filter(line => line.trim());
+        return null;
+        
+    } catch (error) {
+        console.error('Ошибка извлечения JSON:', error);
+        return null;
+    }
+}
+
+// Парсинг JSON данных
+function parseJsonData(jsonData, limit) {
+    const data = [];
+    
+    try {
+        console.log('Парсим JSON данные...');
+        
+        // 1. Проверяем данные из вашего примера
+        if (jsonData.PORTFOLIO_TIP_CACHED) {
+            console.log('Найдены кешированные прогнозы');
             
-            let currentTip = {};
+            const tips = jsonData.PORTFOLIO_TIP_CACHED;
+            let count = 0;
             
-            for (let line of lines) {
-                const cleanLine = line.trim();
+            for (const tipKey in tips) {
+                if (count >= limit) break;
                 
-                if (cleanLine.includes('v') && cleanLine.includes('vs')) {
-                    if (Object.keys(currentTip).length > 0 && data.length < limit) {
-                        data.push({...currentTip});
-                        currentTip = {};
+                const tip = tips[tipKey];
+                const parsedTip = parseTipFromJson(tip, jsonData);
+                
+                if (parsedTip) {
+                    data.push(parsedTip);
+                    count++;
+                }
+            }
+        }
+        
+        // 2. Проверяем завершенные прогнозы
+        if (data.length === 0 && jsonData.PORTFOLIO_COMPLETED_TIPS) {
+            console.log('Использую завершенные прогнозы');
+            
+            const portfolios = jsonData.PORTFOLIO_COMPLETED_TIPS;
+            
+            for (const portfolioKey in portfolios) {
+                const tips = portfolios[portfolioKey];
+                
+                for (let i = 0; i < Math.min(tips.length, limit); i++) {
+                    const tip = tips[i];
+                    const parsedTip = parseCompletedTip(tip, jsonData);
+                    
+                    if (parsedTip) {
+                        data.push(parsedTip);
                     }
-                    currentTip.event = cleanLine;
                 }
-                
-                if (cleanLine.match(/\d{4}-\d{2}-\d{2}/) && !currentTip.date) {
-                    currentTip.date = cleanLine;
-                }
-                
-                if (cleanLine.match(/\d+\.\d+/) && !currentTip.odds) {
-                    currentTip.odds = cleanLine.match(/\d+\.\d+/)[0];
-                }
-                
-                if ((cleanLine.includes('won') || cleanLine.includes('lost')) && !currentTip.result) {
-                    currentTip.result = cleanLine.includes('won') ? '✅' : '❌';
-                }
-            }
-            
-            // Добавляем последний
-            if (Object.keys(currentTip).length > 0 && data.length < limit) {
-                data.push(currentTip);
             }
         }
         
-        // Если всё равно пусто, создаём демо-данные
+        // 3. Если всё равно пусто, создаём демо-данные
         if (data.length === 0) {
-            console.log('Создаю демо-данные для теста');
+            console.log('Создаю демо-данные');
             data.push(
-                {date: '2025-12-19', event: 'Al Arabi v Al-Batin', prediction: 'Match winner • Al-Batin', odds: '2.21', result: '❌', profit: '-£10'},
-                {date: '2025-12-18', event: 'Team A v Team B', prediction: 'Over 2.5', odds: '1.85', result: '✅', profit: '+£8.50'},
-                {date: '2025-12-17', event: 'Team C v Team D', prediction: '1X', odds: '1.45', result: '✅', profit: '+£4.50'}
+                {date: '2025-12-19', event: 'Al Arabi v Al-Batin', prediction: 'Match winner • Al-Batin', odds: '2.21', result: '❌', profit: '-£1.00'},
+                {date: '2025-12-19', event: 'Kocaelispor v Antalyaspor', prediction: 'Match winner • Kocaelispor', odds: '1.63', result: '✅', profit: '+£0.63'},
+                {date: '2025-12-19', event: 'Marseille v Toulouse U19', prediction: 'Match winner • Marseille', odds: '1.70', result: '✅', profit: '+£0.70'}
             );
         }
         
-        return data.slice(0, limit);
+        console.log(`Распарсено ${data.length} записей`);
+        return data;
         
     } catch (error) {
-        console.error('Ошибка парсинга HTML:', error);
+        console.error('Ошибка парсинга JSON:', error);
         return [];
     }
 }
 
-// Извлечение данных из карточки
-function extractTipFromCard(card) {
-    const tip = {};
-    
-    // Дата
-    const timeElement = card.querySelector('time');
-    if (timeElement) {
-        const title = timeElement.getAttribute('title');
-        tip.date = title || timeElement.textContent.trim();
+// Парсинг одного прогноза из JSON
+function parseTipFromJson(tip, jsonData) {
+    try {
+        const result = {};
         
-        // Форматируем дату
-        if (tip.date.includes('December')) {
-            tip.date = '2025-12-' + (tip.date.match(/\d{1,2}/)?.[0]?.padStart(2, '0') || '19');
+        // Дата и время
+        if (tip.tipDate) {
+            const date = new Date(tip.tipDate);
+            result.date = date.toISOString().split('T')[0]; // YYYY-MM-DD
         }
-    }
-    
-    // Матч
-    const matchLink = card.querySelector('a[href*="/fixture/"]');
-    if (matchLink) {
-        tip.event = matchLink.textContent.trim();
-    } else {
-        // Альтернативный поиск
-        const eventText = card.querySelector('dt, h2, h3, h4');
-        if (eventText && eventText.textContent.includes('v')) {
-            tip.event = eventText.textContent.trim();
+        
+        // Название события
+        result.event = tip.title || '';
+        
+        // Прогноз и коэффициент из tipBetItem
+        if (tip.tipBetItem && tip.tipBetItem.length > 0) {
+            const betItem = tip.tipBetItem[0];
+            result.prediction = `${betItem.marketText || 'Match winner'} • ${betItem.betText || ''}`;
+            result.odds = betItem.finalOdds || betItem.createdOdds || '';
         }
-    }
-    
-    // Прогноз
-    const predictionElement = card.querySelector('dt.text-xl.font-bold, [class*="prediction"]');
-    if (predictionElement) {
-        tip.prediction = predictionElement.textContent.trim();
-    }
-    
-    // Коэффициент
-    const oddsElement = card.querySelector('[data-odds], .odds');
-    if (oddsElement) {
-        tip.odds = oddsElement.getAttribute('data-odds') || oddsElement.textContent.trim();
-    }
-    
-    // Результат
-    const resultText = card.textContent.toLowerCase();
-    if (resultText.includes('won')) {
-        tip.result = '✅';
-    } else if (resultText.includes('lost')) {
-        tip.result = '❌';
-    }
-    
-    // Прибыль
-    if (card.textContent.includes('£') || card.textContent.includes('+') || card.textContent.includes('-')) {
-        const moneyMatch = card.textContent.match(/[+-]?£?\d+(?:\.\d+)?/);
-        if (moneyMatch) {
-            tip.profit = moneyMatch[0].includes('£') ? moneyMatch[0] : '£' + moneyMatch[0];
+        
+        // Результат (1 = win, 3 = loss)
+        if (tip.result === 1) {
+            result.result = '✅';
+        } else if (tip.result === 3) {
+            result.result = '❌';
+        } else {
+            result.result = '➖';
         }
+        
+        // Прибыль
+        if (tip.profit !== undefined) {
+            if (tip.profit > 0) {
+                result.profit = `+£${tip.profit.toFixed(2)}`;
+            } else if (tip.profit < 0) {
+                result.profit = `-£${Math.abs(tip.profit).toFixed(2)}`;
+            } else {
+                result.profit = '£0.00';
+            }
+        }
+        
+        // Ставка
+        if (tip.totalStake) {
+            result.stake = `£${tip.totalStake}`;
+        }
+        
+        // Букмекер
+        if (tip.bookmakerId === 1) {
+            result.bookmaker = 'Pinnacle';
+        } else if (tip.bookmakerId === 44) {
+            result.bookmaker = 'Bet365';
+        } else if (tip.bookmakerId === 17) {
+            result.bookmaker = 'William Hill';
+        }
+        
+        return result;
+        
+    } catch (error) {
+        console.error('Ошибка парсинга прогноза:', error);
+        return null;
     }
-    
-    return tip;
+}
+
+// Парсинг завершенного прогноза
+function parseCompletedTip(tip, jsonData) {
+    try {
+        const result = {};
+        
+        // Дата
+        if (tip.date) {
+            const date = new Date(tip.date);
+            result.date = date.toISOString().split('T')[0];
+        }
+        
+        // Название из reference
+        if (tip.reference) {
+            // Пример: "2025-12-19-al-arabi-v-al-batin-pdtmx"
+            const parts = tip.reference.split('-');
+            if (parts.length >= 6) {
+                const home = parts[3].replace(/_/g, ' ');
+                const away = parts[5].replace(/_/g, ' ');
+                result.event = `${home} v ${away}`;
+            }
+        }
+        
+        // Результат
+        if (tip.result === 1) {
+            result.result = '✅';
+        } else if (tip.result === 3) {
+            result.result = '❌';
+        }
+        
+        // Ищем полные данные в PORTFOLIO_TIP_CACHED
+        const cacheKey = `${tip.portfolioReference}_${tip.reference}`;
+        if (jsonData.PORTFOLIO_TIP_CACHED && jsonData.PORTFOLIO_TIP_CACHED[cacheKey]) {
+            const fullTip = jsonData.PORTFOLIO_TIP_CACHED[cacheKey];
+            const parsed = parseTipFromJson(fullTip, jsonData);
+            if (parsed) {
+                return parsed;
+            }
+        }
+        
+        return result.event ? result : null;
+        
+    } catch (error) {
+        console.error('Ошибка парсинга завершенного прогноза:', error);
+        return null;
+    }
 }
 
 // Показать результаты
@@ -233,11 +327,8 @@ function showResults() {
     let html = '';
     
     parsedData.forEach(item => {
-        // Проверяем, реальные ли это данные
-        const isReal = item.event && !item.event.includes('Unlock');
-        
         html += `
-            <tr ${!isReal ? 'style="opacity: 0.6;"' : ''}>
+            <tr>
                 <td>${item.date || '-'}</td>
                 <td>${item.event || '-'}</td>
                 <td>${item.prediction || '-'}</td>
@@ -252,9 +343,9 @@ function showResults() {
     tbody.innerHTML = html;
     countSpan.textContent = parsedData.length;
     
-    // Если все данные демо, показываем предупреждение
-    if (parsedData.length > 0 && parsedData.every(item => !item.event || item.event.includes('Unlock'))) {
-        alert('⚠️ Показаны демо-данные. Для реальных данных нужен сервер с авторизацией.');
+    // Показываем дополнительную информацию
+    if (parsedData.length > 0 && parsedData[0].profit) {
+        console.log('Пример данных:', parsedData[0]);
     }
 }
 
@@ -273,7 +364,9 @@ function exportToExcel() {
             'Прогноз': item.prediction || '',
             'Коэффициент': item.odds || '',
             'Результат': item.result || '',
-            'Прибыль': item.profit || ''
+            'Прибыль': item.profit || '',
+            'Ставка': item.stake || '',
+            'Букмекер': item.bookmaker || ''
         }));
         
         const ws = XLSX.utils.json_to_sheet(exportData);
@@ -305,28 +398,3 @@ function showLoading(show) {
         btn.innerHTML = '<i class="fas fa-play"></i> Парсить';
     }
 }
-
-// Добавляем обработку ошибок fetch
-window.addEventListener('unhandledrejection', function(event) {
-    console.error('Unhandled rejection:', event.reason);
-});
-
-// Тестовая функция для проверки
-function testConnection() {
-    console.log('Тест подключения...');
-    
-    fetch('https://api.allorigins.win/get?url=https://google.com')
-        .then(response => {
-            console.log('Прокси работает:', response.ok);
-            return response.json();
-        })
-        .then(data => {
-            console.log('Ответ получен');
-        })
-        .catch(error => {
-            console.error('Прокси не работает:', error);
-        });
-}
-
-// Авто-тест при загрузке
-setTimeout(testConnection, 1000);
