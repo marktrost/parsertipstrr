@@ -3,23 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tipstrr Parser - Парсер прогнозов</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Tipstrr Parser - Парсер прогнозов с авторизацией</title>
+    
+    <!-- Библиотеки -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
+    <link rel="stylesheet" href="style.css">
+    
+    <style>
+        /* Дополнительные стили для выбора количества */
+        .count-selector {
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .count-selector label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .count-selector select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #4361ee;
+            border-radius: 8px;
+            font-size: 16px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .count-selector select:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.2);
+        }
+        
+        .count-options {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .count-btn {
+            padding: 8px 16px;
+            background: white;
+            border: 2px solid #dee2e6;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .count-btn:hover {
+            background: #f1f3ff;
+            border-color: #4361ee;
+        }
+        
+        .count-btn.active {
+            background: #4361ee;
+            color: white;
+            border-color: #4361ee;
+        }
+        
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #4361ee;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .info-box i {
+            color: #4361ee;
+            margin-right: 10px;
+        }
+    </style>
 </head>
 <body>
     <header>
         <nav>
             <div class="logo">
                 <i class="fas fa-chart-line"></i>
-                <span>Tipstrr Parser</span>
+                <span>Tipstrr Parser PRO</span>
             </div>
             <ul class="nav-links">
                 <li><a href="#home"><i class="fas fa-home"></i> Главная</a></li>
                 <li><a href="#parser"><i class="fas fa-download"></i> Парсер</a></li>
                 <li><a href="#results"><i class="fas fa-table"></i> Результаты</a></li>
-                <li><a href="#instructions"><i class="fas fa-question-circle"></i> Инструкция</a></li>
+                <li><a href="#stats"><i class="fas fa-chart-bar"></i> Статистика</a></li>
             </ul>
         </nav>
     </header>
@@ -27,41 +106,47 @@
     <main>
         <section id="home" class="hero">
             <div class="hero-content">
-                <h1>Парсер прогнозов <span class="highlight">Tipstrr</span></h1>
-                <h2>Получайте данные прямо в Excel без сервера</h2>
-                <p>Просто введите URL страницы с прогнозами и скачайте Excel файл</p>
-                <div class="features">
-                    <div class="feature">
-                        <i class="fas fa-bolt"></i>
-                        <span>Работает в браузере</span>
-                    </div>
-                    <div class="feature">
-                        <i class="fas fa-shield-alt"></i>
-                        <span>Без регистрации</span>
-                    </div>
-                    <div class="feature">
-                        <i class="fas fa-file-excel"></i>
-                        <span>Excel экспорт</span>
-                    </div>
+                <h1>Парсер <span class="highlight">Tipstrr PRO</span></h1>
+                <h2>Полный доступ к прогнозам с авторизацией</h2>
+                <p>Больше никаких "Unlock this free football result" - только реальные данные</p>
+                
+                <div class="info-box">
+                    <p><i class="fas fa-info-circle"></i> <strong>Теперь с авторизацией!</strong> Парсер автоматически входит в ваш аккаунт и получает полные данные.</p>
+                    <p><i class="fas fa-check-circle"></i> Выбирайте сколько прогнозов показать: от 10 до всех</p>
+                    <p><i class="fas fa-database"></i> Полная статистика побед и поражений</p>
+                </div>
+                
+                <div class="cta-buttons">
+                    <a href="#parser" class="btn primary">
+                        <i class="fas fa-rocket"></i> Начать парсинг
+                    </a>
+                    <a href="#stats" class="btn secondary">
+                        <i class="fas fa-chart-pie"></i> Посмотреть статистику
+                    </a>
                 </div>
             </div>
+            
             <div class="hero-image">
                 <div class="demo-card">
                     <div class="demo-header">
-                        <i class="fas fa-magic"></i> Как это работает
+                        <i class="fas fa-key"></i> Как это работает сейчас
                     </div>
                     <div class="demo-steps">
                         <div class="step">
                             <div class="step-number">1</div>
-                            <p>Введите URL страницы tipstrr</p>
+                            <p><strong>Автоматический вход</strong> в ваш аккаунт tipstrr</p>
                         </div>
                         <div class="step">
                             <div class="step-number">2</div>
-                            <p>Парсер извлекает данные</p>
+                            <p><strong>Выбор количества</strong> прогнозов для загрузки</p>
                         </div>
                         <div class="step">
                             <div class="step-number">3</div>
-                            <p>Скачиваете Excel файл</p>
+                            <p><strong>Получение реальных данных</strong> без ограничений</p>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">4</div>
+                            <p><strong>Экспорт в Excel</strong> с полной статистикой</p>
                         </div>
                     </div>
                 </div>
@@ -72,109 +157,173 @@
             <h2><i class="fas fa-download"></i> Парсинг данных</h2>
             
             <div class="parser-container">
-                <div class="input-group">
-                    <label for="url-input">
-                        <i class="fas fa-link"></i> URL страницы Tipstrr:
-                    </label>
-                    <input 
-                        type="text" 
-                        id="url-input" 
-                        placeholder="https://www.tipstrr.com/tipster/username"
-                        value=""
-                    >
-                    <div class="examples">
-                        <small>Примеры: </small>
-                        <button class="example-btn" data-url="https://www.tipstrr.com/tipster/example">Пример 1</button>
-                        <button class="example-btn" data-url="https://www.tipstrr.com/tipster/demo">Пример 2</button>
+                <!-- Информация об аккаунте -->
+                <div class="account-info">
+                    <h3><i class="fas fa-user-check"></i> Аккаунт для парсинга</h3>
+                    <div class="account-details">
+                        <p><strong>Email:</strong> kzgansta@gmail.com</p>
+                        <p><strong>Статус:</strong> <span class="status-connected"><i class="fas fa-circle"></i> Авторизован</span></p>
+                        <p><strong>Источник:</strong> <a href="https://tipstrr.com/tipster/freguli/results" target="_blank">tipstrr.com/tipster/freguli</a></p>
                     </div>
                 </div>
 
+                <!-- ВЫБОР КОЛИЧЕСТВА ПРОГНОЗОВ -->
+                <div class="count-selector">
+                    <label for="tip-count">
+                        <i class="fas fa-filter"></i> Сколько прогнозов загрузить?
+                    </label>
+                    
+                    <select id="tip-count">
+                        <option value="10">10 последних прогнозов</option>
+                        <option value="25">25 последних прогнозов</option>
+                        <option value="50" selected>50 последних прогнозов (рекомендуется)</option>
+                        <option value="100">100 последних прогнозов</option>
+                        <option value="all">Все доступные прогнозы</option>
+                    </select>
+                    
+                    <div class="count-options">
+                        <div class="count-btn" data-count="10">10</div>
+                        <div class="count-btn" data-count="25">25</div>
+                        <div class="count-btn active" data-count="50">50</div>
+                        <div class="count-btn" data-count="100">100</div>
+                        <div class="count-btn" data-count="all">Все</div>
+                    </div>
+                    
+                    <p class="hint"><i class="fas fa-lightbulb"></i> Выберите количество или используйте быстрые кнопки</p>
+                </div>
+
+                <!-- Настройки -->
                 <div class="settings">
-                    <h3><i class="fas fa-cog"></i> Настройки парсинга</h3>
+                    <h3><i class="fas fa-cog"></i> Дополнительные настройки</h3>
                     
                     <div class="settings-grid">
                         <div class="setting">
-                            <input type="checkbox" id="parse-stats" checked>
-                            <label for="parse-stats">Статистика</label>
+                            <input type="checkbox" id="show-stats" checked>
+                            <label for="show-stats">Показывать статистику</label>
                         </div>
                         <div class="setting">
-                            <input type="checkbox" id="parse-history" checked>
-                            <label for="parse-history">История ставок</label>
+                            <input type="checkbox" id="auto-refresh" checked>
+                            <label for="auto-refresh">Автообновление каждые 5 мин</label>
                         </div>
                         <div class="setting">
-                            <input type="checkbox" id="parse-upcoming" checked>
-                            <label for="parse-upcoming">Предстоящие</label>
+                            <input type="checkbox" id="save-local" checked>
+                            <label for="save-local">Сохранять данные локально</label>
                         </div>
-                    </div>
-
-                    <div class="proxy-settings">
-                        <label for="proxy-select">
-                            <i class="fas fa-server"></i> Режим работы:
-                        </label>
-                        <select id="proxy-select">
-                            <option value="direct">Прямой запрос (может не работать)</option>
-                            <option value="corsproxy">CORS Прокси (рекомендуется)</option>
-                            <option value="mock">Тестовые данные</option>
-                        </select>
                     </div>
                 </div>
 
+                <!-- Кнопки действий -->
                 <div class="action-buttons">
                     <button id="parse-btn" class="btn primary">
-                        <i class="fas fa-play"></i> Начать парсинг
+                        <i class="fas fa-play"></i> Загрузить прогнозы
                     </button>
-                    <button id="clear-btn" class="btn secondary">
+                    <button id="test-btn" class="btn secondary">
+                        <i class="fas fa-vial"></i> Тест подключения
+                    </button>
+                    <button id="clear-btn" class="btn warning">
                         <i class="fas fa-trash"></i> Очистить
                     </button>
                 </div>
 
+                <!-- Индикатор загрузки -->
                 <div class="loading" id="loading" style="display: none;">
                     <div class="spinner"></div>
-                    <p>Парсинг данных...</p>
+                    <p id="loading-text">Подключаюсь к Tipstrr...</p>
+                    <div class="progress-bar">
+                        <div class="progress"></div>
+                    </div>
                 </div>
             </div>
         </section>
 
         <section id="results" class="section dark">
-            <h2><i class="fas fa-table"></i> Результаты</h2>
+            <h2><i class="fas fa-table"></i> Результаты парсинга</h2>
             
             <div class="results-header">
                 <div class="stats">
                     <div class="stat">
                         <i class="fas fa-database"></i>
-                        <span>Найдено записей: <strong id="record-count">0</strong></span>
+                        <span>Прогнозов: <strong id="record-count">0</strong> из <span id="total-count">0</span></span>
                     </div>
                     <div class="stat">
                         <i class="fas fa-clock"></i>
-                        <span>Время парсинга: <strong id="parse-time">0</strong> сек</span>
+                        <span>Время: <strong id="parse-time">0</strong> сек</span>
+                    </div>
+                    <div class="stat">
+                        <i class="fas fa-calendar"></i>
+                        <span>Период: <strong id="date-range">—</strong></span>
                     </div>
                 </div>
                 
-                <button id="export-btn" class="btn success" disabled>
-                    <i class="fas fa-file-excel"></i> Экспорт в Excel
-                </button>
+                <div class="export-controls">
+                    <button id="export-btn" class="btn success" disabled>
+                        <i class="fas fa-file-excel"></i> Экспорт в Excel
+                    </button>
+                    <button id="refresh-btn" class="btn secondary">
+                        <i class="fas fa-sync-alt"></i> Обновить
+                    </button>
+                </div>
             </div>
 
+            <!-- Таблица с результатами -->
             <div class="table-container">
+                <div class="table-header">
+                    <h3><i class="fas fa-list"></i> Список прогнозов</h3>
+                    <div class="table-actions">
+                        <button class="table-action" id="sort-date">
+                            <i class="fas fa-sort-amount-down"></i> Сортировать по дате
+                        </button>
+                        <button class="table-action" id="filter-won">
+                            <i class="fas fa-check-circle"></i> Только победы
+                        </button>
+                        <button class="table-action" id="filter-all">
+                            <i class="fas fa-list"></i> Все
+                        </button>
+                    </div>
+                </div>
+                
                 <table id="data-table">
                     <thead>
                         <tr>
-                            <th>Дата</th>
-                            <th>Событие</th>
-                            <th>Прогноз</th>
-                            <th>Коэффициент</th>
-                            <th>Результат</th>
-                            <th>Прибыль</th>
+                            <th><i class="fas fa-calendar"></i> Дата</th>
+                            <th><i class="fas fa-futbol"></i> Событие</th>
+                            <th><i class="fas fa-bullseye"></i> Прогноз</th>
+                            <th><i class="fas fa-percentage"></i> Коэффициент</th>
+                            <th><i class="fas fa-flag"></i> Результат</th>
+                            <th><i class="fas fa-coins"></i> Прибыль</th>
+                            <th><i class="fas fa-money-bill-wave"></i> Ставка</th>
                         </tr>
                     </thead>
                     <tbody id="table-body">
                         <tr class="empty-row">
-                            <td colspan="6">Нет данных. Начните парсинг.</td>
+                            <td colspan="7">
+                                <div class="empty-state">
+                                    <i class="fas fa-database"></i>
+                                    <h4>Нет данных</h4>
+                                    <p>Нажмите "Загрузить прогнозы" чтобы начать парсинг</p>
+                                </div>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
+                
+                <div class="table-footer">
+                    <div class="pagination">
+                        <button class="page-btn" disabled id="prev-page">
+                            <i class="fas fa-chevron-left"></i> Назад
+                        </button>
+                        <span class="page-info">Страница <span id="current-page">1</span> из <span id="total-pages">1</span></span>
+                        <button class="page-btn" disabled id="next-page">
+                            Вперед <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="records-info">
+                        Показано <span id="shown-count">0</span> из <span id="total-records">0</span> записей
+                    </div>
+                </div>
             </div>
 
+            <!-- Дополнительный экспорт -->
             <div class="additional-export">
                 <h3><i class="fas fa-download"></i> Дополнительные форматы</h3>
                 <div class="export-buttons">
@@ -184,6 +333,9 @@
                     <button id="export-json" class="btn secondary" disabled>
                         <i class="fas fa-file-code"></i> JSON
                     </button>
+                    <button id="export-pdf" class="btn secondary" disabled>
+                        <i class="fas fa-file-pdf"></i> PDF
+                    </button>
                     <button id="export-print" class="btn secondary">
                         <i class="fas fa-print"></i> Печать
                     </button>
@@ -191,45 +343,94 @@
             </div>
         </section>
 
-        <section id="instructions" class="section">
-            <h2><i class="fas fa-question-circle"></i> Инструкция</h2>
+        <section id="stats" class="section">
+            <h2><i class="fas fa-chart-bar"></i> Статистика</h2>
             
-            <div class="instructions-grid">
-                <div class="instruction-card">
-                    <div class="instruction-icon">
-                        <i class="fas fa-search"></i>
+            <div class="stats-container">
+                <div class="stats-grid">
+                    <div class="stat-card primary">
+                        <div class="stat-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3>Общая статистика</h3>
+                            <div class="stat-numbers">
+                                <div class="stat-item">
+                                    <span class="label">Всего прогнозов:</span>
+                                    <span class="value" id="stats-total">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="label">Побед:</span>
+                                    <span class="value success" id="stats-won">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="label">Поражений:</span>
+                                    <span class="value danger" id="stats-lost">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="label">В процессе:</span>
+                                    <span class="value" id="stats-pending">0</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <h3>Шаг 1: Найдите страницу</h3>
-                    <p>Перейдите на tipstrr.com и найдите страницу tipster'а с прогнозами. Скопируйте URL из адресной строки.</p>
+                    
+                    <div class="stat-card success">
+                        <div class="stat-icon">
+                            <i class="fas fa-money-bill-wave"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3>Финансовая статистика</h3>
+                            <div class="stat-numbers">
+                                <div class="stat-item">
+                                    <span class="label">Общая прибыль:</span>
+                                    <span class="value" id="stats-profit">£0.00</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="label">Средняя ставка:</span>
+                                    <span class="value" id="stats-avg-stake">£0.00</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="label">ROI (%):</span>
+                                    <span class="value" id="stats-roi">0%</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="label">Винрейт:</span>
+                                    <span class="value" id="stats-winrate">0%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 
-                <div class="instruction-card">
-                    <div class="instruction-icon">
-                        <i class="fas fa-paste"></i>
+                <div class="charts-container">
+                    <div class="chart-card">
+                        <h3><i class="fas fa-chart-pie"></i> Распределение результатов</h3>
+                        <div class="chart-placeholder" id="results-chart">
+                            <!-- Здесь будет диаграмма -->
+                            <div class="no-chart-data">
+                                <i class="fas fa-chart-pie"></i>
+                                <p>Загрузите данные для построения графиков</p>
+                            </div>
+                        </div>
                     </div>
-                    <h3>Шаг 2: Вставьте URL</h3>
-                    <p>Вставьте скопированный URL в поле ввода на нашем сайте. Используйте CORS прокси для обхода ограничений.</p>
-                </div>
-                
-                <div class="instruction-card">
-                    <div class="instruction-icon">
-                        <i class="fas fa-download"></i>
+                    
+                    <div class="chart-card">
+                        <h3><i class="fas fa-chart-line"></i> Динамика прибыли</h3>
+                        <div class="chart-placeholder" id="profit-chart">
+                            <!-- Здесь будет график -->
+                            <div class="no-chart-data">
+                                <i class="fas fa-chart-line"></i>
+                                <p>Загрузите данные для построения графиков</p>
+                            </div>
+                        </div>
                     </div>
-                    <h3>Шаг 3: Скачайте Excel</h3>
-                    <p>Нажмите "Начать парсинг", дождитесь обработки и скачайте данные в Excel формате.</p>
                 </div>
             </div>
-
-            <div class="warning">
-                <i class="fas fa-exclamation-triangle"></i>
-                <div>
-                    <h4>Важная информация</h4>
-                    <p>• Парсинг работает полностью в вашем браузере</p>
-                    <p>• Данные не сохраняются на сервере</p>
-                    <p>• Для обхода CORS используйте режим "CORS Прокси"</p>
-                    <p>• Используйте ответственно и в соответствии с правилами сайта</p>
-                </div>
-            </div>
+            
+            <button id="update-stats" class="btn primary">
+                <i class="fas fa-sync-alt"></i> Обновить статистику
+            </button>
         </section>
     </main>
 
@@ -237,26 +438,121 @@
         <div class="footer-content">
             <div class="footer-section">
                 <h4><i class="fas fa-info-circle"></i> О проекте</h4>
-                <p>Парсер для tipstrr.com. Работает полностью в браузере.</p>
+                <p>Профессиональный парсер для tipstrr.com с авторизацией и полной статистикой.</p>
+                <p><strong>Версия:</strong> 2.0 PRO</p>
+                <p><strong>Статус:</strong> <span class="status-online">Работает</span></p>
             </div>
+            
             <div class="footer-section">
-                <h4><i class="fas fa-code"></i> Технологии</h4>
-                <p>JavaScript • SheetJS • CORS прокси • Render</p>
+                <h4><i class="fas fa-shield-alt"></i> Безопасность</h4>
+                <p>Ваши данные защищены. Логин и пароль хранятся только на сервере и не передаются в браузер.</p>
+                <p>Используется безопасное HTTPS соединение.</p>
             </div>
+            
             <div class="footer-section">
-                <h4><i class="fas fa-exclamation-circle"></i> Отказ от ответственности</h4>
-                <p>Только для образовательных целей. Используйте ответственно.</p>
+                <h4><i class="fas fa-cogs"></i> Технологии</h4>
+                <div class="tech-stack">
+                    <span class="tech">Node.js</span>
+                    <span class="tech">Express</span>
+                    <span class="tech">Cheerio</span>
+                    <span class="tech">SheetJS</span>
+                    <span class="tech">Render</span>
+                </div>
             </div>
         </div>
+        
         <div class="copyright">
-            <p>© 2023 Tipstrr Parser | Создано в компьютерном клубе</p>
-            <p>Развернуто на <a href="https://render.com" target="_blank">Render</a></p>
+            <p>© 2023 Tipstrr Parser PRO | Авторизованный доступ к прогнозам</p>
+            <p>Работает на <a href="https://render.com" target="_blank">Render</a> | Логин: kzgansta@gmail.com</p>
+            <div class="footer-links">
+                <a href="#" class="footer-link"><i class="fas fa-question-circle"></i> Помощь</a>
+                <a href="#" class="footer-link"><i class="fas fa-bug"></i> Сообщить об ошибке</a>
+                <a href="#" class="footer-link"><i class="fas fa-code"></i> GitHub</a>
+            </div>
         </div>
     </footer>
 
-    <!-- Библиотеки -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Подключение библиотек -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- Подключение скрипта -->
     <script src="script.js"></script>
+    
+    <!-- Дополнительные скрипты для интерфейса -->
+    <script>
+        // Быстрые кнопки выбора количества
+        document.querySelectorAll('.count-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                // Убираем активный класс у всех кнопок
+                document.querySelectorAll('.count-btn').forEach(b => {
+                    b.classList.remove('active');
+                });
+                
+                // Добавляем активный класс текущей кнопке
+                this.classList.add('active');
+                
+                // Устанавливаем значение в select
+                const count = this.getAttribute('data-count');
+                document.getElementById('tip-count').value = count;
+                
+                // Показываем уведомление
+                toastr.info(`Будет загружено: ${count === 'all' ? 'все прогнозы' : count + ' прогнозов'}`);
+            });
+        });
+        
+        // Обработка select
+        document.getElementById('tip-count').addEventListener('change', function() {
+            const count = this.value;
+            const text = this.options[this.selectedIndex].text;
+            toastr.info(`Выбрано: ${text}`);
+            
+            // Обновляем активную кнопку
+            document.querySelectorAll('.count-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.getAttribute('data-count') === count) {
+                    btn.classList.add('active');
+                }
+            });
+        });
+        
+        // Кнопка теста подключения
+        document.getElementById('test-btn').addEventListener('click', async function() {
+            toastr.info('Тестирую подключение к серверу...', 'Тест');
+            
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                
+                if (data.status === 'ok') {
+                    toastr.success('Сервер работает!', 'Успех');
+                } else {
+                    toastr.error('Проблема с сервером', 'Ошибка');
+                }
+            } catch (error) {
+                toastr.error('Не удалось подключиться к серверу', 'Ошибка');
+            }
+        });
+        
+        // Кнопка обновления
+        document.getElementById('refresh-btn').addEventListener('click', function() {
+            if (parsedData && parsedData.length > 0) {
+                startParsing();
+            } else {
+                toastr.warning('Сначала загрузите данные', 'Внимание');
+            }
+        });
+        
+        // Обновление статистики
+        document.getElementById('update-stats').addEventListener('click', function() {
+            updateStatistics();
+        });
+        
+        // Инициализация
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('💻 Tipstrr Parser PRO загружен');
+            toastr.info('Готов к работе! Выберите количество прогнозов и нажмите "Загрузить"', 'Добро пожаловать');
+        });
+    </script>
 </body>
 </html>
