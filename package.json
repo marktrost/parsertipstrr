@@ -1,0 +1,12 @@
+{
+  "name": "my-static-site",
+  "version": "1.0.0",
+  "description": "Сайт созданный в компьютерном клубе",
+  "scripts": {
+    "start": "echo 'Static site - no server needed'"
+  },
+  "staticFiles": {
+    "staticPath": ".",
+    "staticOutPath": "."
+  }
+}
