@@ -143,3 +143,40 @@ tr:nth-child(even) {
 
 .success { color: green; font-weight: bold; }
 .error { color: red; font-weight: bold; }
+/* Стили для ошибок */
+.error-message {
+    background: #f8d7da;
+    color: #721c24;
+    padding: 15px;
+    border-radius: 5px;
+    margin: 10px 0;
+    border: 1px solid #f5c6cb;
+}
+
+/* Стили для реальных/демо данных */
+.real-data {
+    border-left: 4px solid #28a745;
+}
+
+.demo-data {
+    border-left: 4px solid #ffc107;
+    opacity: 0.7;
+}
+
+/* Консоль для отладки */
+.debug-console {
+    background: #333;
+    color: #0f0;
+    padding: 10px;
+    font-family: monospace;
+    border-radius: 5px;
+    margin-top: 10px;
+    font-size: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+    display: none;
+}
+
+.show-debug #debug-console {
+    display: block;
+}
