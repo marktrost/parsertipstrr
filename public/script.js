@@ -81,6 +81,8 @@ async function parseData() {
         
         // Показываем первые 2000 символов для отладки
         console.log('Первые 2000 символов HTML:', html.substring(0, 2000));
+        // Анализируем структуру страницы
+        analyzeTipstrrScript(html);
         
         // Пробуем парсить
         parsedData = extractAndParseDataNew(html, count);
