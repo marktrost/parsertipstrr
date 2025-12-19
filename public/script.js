@@ -1,331 +1,392 @@
-// ====== ОСНОВНАЯ ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ВСЕХ ПРОГНОЗОВ ======
-async function fetchAllTipsFromAPI(tipsterName = 'freguli', limit = 50) {
-    console.log('📡 Запрашиваю данные через API...');
-    
-    try {
-        // Базовый URL API (сконструирован на основе вашего запроса)
-        const baseUrl = `https://tipstrr.com/tipster/${tipsterName}/completed`;
-        
-        // Массив для хранения всех прогнозов
-        let allTips = [];
-        let skip = 0;
-        const batchSize = 20; // По сколько запрашивать за раз
-        
-        // Запрашиваем данные партиями, пока не соберем нужное количество
-        while (allTips.length < limit) {
-            console.log(`🔍 Запрашиваю прогнозы с skip=${skip}...`);
-            
-            const apiUrl = `${baseUrl}?skip=${skip}&limit=${batchSize}`;
-            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`;
-            
-            const response = await fetch(proxyUrl, {
-                headers: {
-                    'Accept': 'application/json',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Ошибка API: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            console.log(`✅ Получено прогнозов: ${data.length || 0}`);
-            
-            // Если данных больше нет - выходим из цикла
-            if (!data || data.length === 0) {
-                console.log('📭 Больше данных нет');
-                break;
-            }
-            
-            // Парсим полученные данные
-            const parsedTips = parseAPITips(data);
-            allTips = allTips.concat(parsedTips);
-            
-            // Увеличиваем skip для следующей партии
-            skip += batchSize;
-            
-            // Небольшая задержка, чтобы не нагружать сервер
-            await new Promise(resolve => setTimeout(resolve, 500));
-        }
-        
-        // Ограничиваем общее количество
-        allTips = allTips.slice(0, limit);
-        console.log(`🎯 Итого получено прогнозов: ${allTips.length}`);
-        
-        return allTips;
-        
-    } catch (error) {
-        console.error('❌ Ошибка при работе с API:', error);
-        throw error;
-    }
-}
+let parsedData = [];
 
-// ====== ПАРСИНГ ДАННЫХ ИЗ API ======
-function parseAPITips(apiData) {
-    const tips = [];
+// Инициализация
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Парсер загружен - API версия');
+    document.getElementById('parse-btn').addEventListener('click', parseData);
+    document.getElementById('export-btn').addEventListener('click', exportToExcel);
     
-    // Проверяем формат данных
-    console.log('📊 Формат данных API:', Array.isArray(apiData) ? 'Массив' : 'Объект');
-    console.log('Пример элемента:', apiData[0]);
-    
-    // Если данные - массив, обрабатываем каждый элемент
-    if (Array.isArray(apiData)) {
-        apiData.forEach(item => {
-            const tip = parseSingleAPITip(item);
-            if (tip) tips.push(tip);
-        });
-    } 
-    // Если данные в другом формате (например, объект с полем tips)
-    else if (apiData.tips && Array.isArray(apiData.tips)) {
-        apiData.tips.forEach(item => {
-            const tip = parseSingleAPITip(item);
-            if (tip) tips.push(tip);
-        });
-    }
-    // Если это один объект
-    else if (apiData.title || apiData.event) {
-        const tip = parseSingleAPITip(apiData);
-        if (tip) tips.push(tip);
-    }
-    
-    return tips;
-}
+    // Включаем тестовые функции
+    window.testAPI = testAPI;
+    window.simpleTest = simpleTest;
+});
 
-// ====== ПАРСИНГ ОДНОГО ПРОГНОЗА ИЗ API ======
-function parseSingleAPITip(tipObj) {
-    try {
-        const tip = {};
-        
-        // 1. ДАТА ДОБАВЛЕНИЯ ПРОГНОЗА
-        if (tipObj.dateAdded || tipObj.tipDate || tipObj.createdAt) {
-            const dateStr = tipObj.dateAdded || tipObj.tipDate || tipObj.createdAt;
-            tip.addedDate = formatAPIDate(dateStr);
-        }
-        
-        // 2. ДАТА И ВРЕМЯ МАТЧА
-        if (tipObj.matchDate || tipObj.eventDate || tipObj.fixtureDate) {
-            const dateStr = tipObj.matchDate || tipObj.eventDate || tipObj.fixtureDate;
-            tip.matchDateTime = formatAPIDate(dateStr);
-        }
-        
-        // 3. НАЗВАНИЕ СОБЫТИЯ
-        tip.event = tipObj.title || 
-                   tipObj.event || 
-                   tipObj.fixture || 
-                   tipObj.match || 
-                   'Неизвестное событие';
-        
-        // 4. ТИП РЫНКА И ПРОГНОЗ
-        if (tipObj.tipBetItem && tipObj.tipBetItem.length > 0) {
-            const betItem = tipObj.tipBetItem[0];
-            tip.prediction = `${betItem.marketText || 'Прогноз'} • ${betItem.betText || ''}`;
-        } else if (tipObj.market || tipObj.betType) {
-            tip.prediction = `${tipObj.market || ''} • ${tipObj.betType || ''}`.trim();
-        } else {
-            tip.prediction = tipObj.prediction || 'Прогноз';
-        }
-        
-        // 5. РЕКОМЕНДОВАННЫЙ КОЭФФИЦИЕНТ
-        if (tipObj.odds || tipObj.finalOdds || tipObj.advisedOdds) {
-            tip.advisedOdds = tipObj.odds || tipObj.finalOdds || tipObj.advisedOdds;
-        } else if (tipObj.tipBetItem && tipObj.tipBetItem[0]) {
-            tip.advisedOdds = tipObj.tipBetItem[0].finalOdds || tipObj.tipBetItem[0].createdOdds;
-        }
-        
-        // 6. РАЗМЕР СТАВКИ
-        if (tipObj.totalStake || tipObj.stake) {
-            tip.stake = `£${tipObj.totalStake || tipObj.stake}`;
-        } else if (tipObj.stakeAmount) {
-            tip.stake = `£${tipObj.stakeAmount}`;
-        }
-        
-        // 7. РЕЗУЛЬТАТ
-        if (tipObj.result !== undefined) {
-            // Предполагаем: 1 = win, 0 = loss, 2 = void
-            if (tipObj.result === 1) {
-                tip.result = 'won';
-            } else if (tipObj.result === 0) {
-                tip.result = 'lost';
-            } else {
-                tip.result = 'void';
-            }
-        } else if (tipObj.status) {
-            tip.result = tipObj.status.toLowerCase();
-        }
-        
-        // 8. ПРИБЫЛЬ
-        if (tipObj.profit !== undefined && tipObj.profit !== null) {
-            if (tipObj.profit > 0) {
-                tip.profit = `+£${tipObj.profit.toFixed(2)}`;
-            } else if (tipObj.profit < 0) {
-                tip.profit = `-£${Math.abs(tipObj.profit).toFixed(2)}`;
-            } else {
-                tip.profit = '£0.00';
-            }
-        }
-        
-        // Дополнительно: ID для отладки
-        tip._id = tipObj.id || tipObj._id || tipObj.reference;
-        
-        return tip;
-        
-    } catch (error) {
-        console.error('❌ Ошибка парсинга объекта из API:', error, tipObj);
-        return null;
-    }
-}
-
-// ====== ФОРМАТИРОВАНИЕ ДАТЫ ИЗ API ======
-function formatAPIDate(dateStr) {
-    if (!dateStr) return '';
-    
-    try {
-        // Если это timestamp
-        if (typeof dateStr === 'number') {
-            return new Date(dateStr).toISOString();
-        }
-        
-        // Если это строка даты
-        const date = new Date(dateStr);
-        
-        // Проверяем валидность
-        if (isNaN(date.getTime())) {
-            // Пробуем разные форматы
-            const formats = [
-                dateStr.replace('th ', ' ').replace('st ', ' ').replace('nd ', ' ').replace('rd ', ' '),
-                dateStr.split('T')[0]
-            ];
-            
-            for (const format of formats) {
-                const testDate = new Date(format);
-                if (!isNaN(testDate.getTime())) {
-                    return testDate.toISOString();
-                }
-            }
-            
-            return dateStr; // Возвращаем как есть, если не удалось распарсить
-        }
-        
-        return date.toISOString();
-    } catch (error) {
-        console.warn('⚠️ Ошибка форматирования даты:', dateStr, error);
-        return dateStr;
-    }
-}
-
-// ====== ОБНОВЛЕННАЯ ФУНКЦИЯ PARSE DATA ======
+// ================= ОСНОВНЫЕ ФУНКЦИИ =================
 async function parseData() {
+    console.log('✅ Кнопка "Парсить" нажата!');
+    
     const url = document.getElementById('url-input').value;
     const count = parseInt(document.getElementById('count-select').value);
     
     showLoading(true);
     
     try {
-        console.log('🎯 Использую API метод...');
+        console.log('🚀 Начинаю парсинг...');
         
         // Извлекаем имя типстера из URL
-        const tipsterMatch = url.match(/tipstrr\.com\/tipster\/([^\/]+)/);
+        const tipsterMatch = url.match(/tipster\/([^\/]+)/);
         const tipsterName = tipsterMatch ? tipsterMatch[1] : 'freguli';
         
-        // Получаем все прогнозы через API
-        window.parsedData = await fetchAllTipsFromAPI(tipsterName, count);
+        // 1. Пробуем получить данные через API
+        console.log('📡 Пробую API метод...');
+        const apiUrl = `https://tipstrr.com/tipster/${tipsterName}/completed?skip=0&limit=${count}`;
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`;
         
-        showResults();
-        document.getElementById('export-btn').disabled = window.parsedData.length === 0;
+        const response = await fetch(proxyUrl, {
+            headers: {
+                'Accept': 'application/json',
+                'User-Agent': 'Mozilla/5.0'
+            }
+        });
         
-        console.log(`✅ Найдено записей: ${window.parsedData.length}`);
-        
-        if (window.parsedData.length === 0) {
-            alert('Через API не получено данных. Пробую HTML парсинг...');
-            // Резервный метод: парсинг HTML
-            await parseDataHTMLFallback();
+        if (response.ok) {
+            const data = await response.json();
+            console.log('📦 API ответ:', data);
+            
+            if (data && data.length > 0) {
+                parsedData = parseSimpleAPIData(data, count);
+                console.log(`✅ Получено ${parsedData.length} прогнозов из API`);
+            } else {
+                throw new Error('API вернул пустой ответ');
+            }
         } else {
-            alert(`Успешно! Получено ${window.parsedData.length} прогнозов через API.`);
+            throw new Error(`API ошибка: ${response.status}`);
         }
         
-    } catch (error) {
-        console.error('❌ Ошибка при работе с API:', error);
-        alert('Ошибка API: ' + error.message + '\nПробую резервный метод...');
-        await parseDataHTMLFallback();
-    } finally {
-        showLoading(false);
-    }
-}
-
-// ====== РЕЗЕРВНЫЙ МЕТОД (HTML ПАРСИНГ) ======
-async function parseDataHTMLFallback() {
-    try {
-        const url = document.getElementById('url-input').value;
-        const count = parseInt(document.getElementById('count-select').value);
+    } catch (apiError) {
+        console.log('⚠️ API не сработал:', apiError.message);
+        console.log('🔄 Пробую HTML метод...');
         
-        console.log('🔄 Использую резервный HTML метод...');
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-        const response = await fetch(proxyUrl);
-        
-        if (!response.ok) throw new Error(`HTTP ошибка: ${response.status}`);
-        
-        const html = await response.text();
-        
-        // Используем улучшенный HTML парсер из предыдущего решения
-        window.parsedData = parseTipsFromHTML(html).slice(0, count);
-        
-        if (window.parsedData.length === 0) {
+        // 2. Резервный метод: парсинг HTML
+        try {
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+            const response = await fetch(proxyUrl);
+            const html = await response.text();
+            
+            parsedData = parseTipsFromHTML(html, count);
+            
+            if (parsedData.length === 0) {
+                console.log('⚠️ HTML парсинг не нашел данных');
+                throw new Error('Нет данных');
+            }
+        } catch (htmlError) {
+            console.log('❌ Все методы не сработали, загружаю демо');
             loadDemoData();
+            return;
         }
-    } catch (error) {
-        console.error('❌ Ошибка в резервном методе:', error);
-        loadDemoData();
     }
+    
+    showResults();
+    document.getElementById('export-btn').disabled = parsedData.length === 0;
+    
+    alert(`✅ Готово! Найдено ${parsedData.length} прогнозов`);
+    showLoading(false);
 }
 
-// ====== ТЕСТОВАЯ ФУНКЦИЯ ДЛЯ ПРОВЕРКИ API ======
-async function testAPI() {
-    console.clear();
-    console.log('=== ТЕСТ API TIPSTRR ===');
+// ================= УПРОЩЕННЫЙ ПАРСИНГ API =================
+function parseSimpleAPIData(apiData, limit) {
+    const tips = [];
+    
+    if (!apiData || !Array.isArray(apiData)) {
+        console.log('❌ API данные не являются массивом');
+        return tips;
+    }
+    
+    apiData.slice(0, limit).forEach((item, index) => {
+        const tip = {};
+        
+        // 1. Дата добавления
+        tip.addedDate = item.dateAdded || item.createdAt || '';
+        
+        // 2. Дата матча
+        tip.matchDateTime = item.matchDate || item.eventDate || '';
+        
+        // 3. Название события
+        tip.event = item.title || item.event || 'Неизвестный матч';
+        
+        // 4. Прогноз
+        if (item.tipBetItem && item.tipBetItem[0]) {
+            const bet = item.tipBetItem[0];
+            tip.prediction = `${bet.marketText || ''} • ${bet.betText || ''}`;
+        } else {
+            tip.prediction = 'Прогноз';
+        }
+        
+        // 5. Коэффициент
+        tip.advisedOdds = item.odds || (item.tipBetItem && item.tipBetItem[0] && item.tipBetItem[0].finalOdds) || '';
+        
+        // 6. Ставка
+        tip.stake = item.totalStake ? `£${item.totalStake}` : '';
+        
+        // 7. Результат
+        if (item.result === 1) tip.result = 'won';
+        else if (item.result === 0) tip.result = 'lost';
+        else tip.result = 'void';
+        
+        // 8. Прибыль
+        if (item.profit !== undefined) {
+            tip.profit = item.profit >= 0 ? `+£${item.profit.toFixed(2)}` : `-£${Math.abs(item.profit).toFixed(2)}`;
+        }
+        
+        tips.push(tip);
+    });
+    
+    return tips;
+}
+
+// ================= HTML ПАРСИНГ =================
+function parseTipsFromHTML(html, limit) {
+    console.log('🔍 Парсинг HTML...');
+    const tips = [];
     
     try {
-        // Тест 1: Проверяем базовый запрос
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        // Ищем все контейнеры с прогнозами
+        const containers = doc.querySelectorAll('article, [data-island*="FeedCard"], .block');
+        
+        console.log(`Найдено контейнеров: ${containers.length}`);
+        
+        containers.forEach((container, index) => {
+            if (index >= limit) return;
+            
+            const text = container.textContent;
+            
+            // Пропускаем пустые контейнеры
+            if (text.length < 100) return;
+            
+            const tip = {};
+            
+            // 1. Название события
+            const eventMatch = text.match(/([A-Za-z0-9\s\-]+)\s+v(?:s|\.)?\s+([A-Za-z0-9\s\-]+)/);
+            if (eventMatch) {
+                tip.event = `${eventMatch[1]} v ${eventMatch[2]}`;
+            }
+            
+            // 2. Дата
+            const dateMatch = text.match(/(\d{4}-\d{2}-\d{2})|(\d{2}\.\d{2}\.\d{4})/);
+            if (dateMatch) tip.addedDate = dateMatch[0];
+            
+            // 3. Коэффициент
+            const oddsMatch = text.match(/\d+\.\d{2}/);
+            if (oddsMatch) tip.advisedOdds = oddsMatch[0];
+            
+            // 4. Прогноз
+            if (text.includes('Match winner')) tip.prediction = 'Match winner';
+            else if (text.includes('Over')) tip.prediction = 'Over/Under';
+            else if (text.includes('Both teams')) tip.prediction = 'Both teams to score';
+            
+            // 5. Ставка
+            const stakeMatch = text.match(/£(\d+(?:\.\d{2})?)\s*stake/i);
+            if (stakeMatch) tip.stake = `£${stakeMatch[1]}`;
+            
+            // 6. Результат
+            if (text.includes('won')) tip.result = 'won';
+            else if (text.includes('lost')) tip.result = 'lost';
+            
+            // 7. Прибыль
+            const profitMatch = text.match(/[+-]£(\d+\.\d{2})/);
+            if (profitMatch) tip.profit = profitMatch[0];
+            
+            if (tip.event) {
+                tips.push(tip);
+            }
+        });
+        
+    } catch (error) {
+        console.error('Ошибка HTML парсинга:', error);
+    }
+    
+    return tips;
+}
+
+// ================= ПОКАЗ РЕЗУЛЬТАТОВ =================
+function showResults() {
+    const tbody = document.getElementById('results-body');
+    const countSpan = document.getElementById('count');
+    
+    if (!tbody || !countSpan) {
+        console.error('Не найдены элементы таблицы');
+        return;
+    }
+    
+    if (!parsedData || parsedData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8">Нет данных</td></tr>';
+        countSpan.textContent = '0';
+        return;
+    }
+    
+    let html = '';
+    
+    parsedData.forEach(item => {
+        html += `
+            <tr>
+                <td>${item.addedDate ? item.addedDate.substring(0, 10) : '-'}</td>
+                <td>${item.matchDateTime ? item.matchDateTime.substring(0, 10) : '-'}</td>
+                <td>${item.event || '-'}</td>
+                <td>${item.prediction || '-'}</td>
+                <td>${item.advisedOdds || '-'}</td>
+                <td>${item.stake || '-'}</td>
+                <td class="${item.result === 'won' ? 'success' : 'error'}">${item.result || '-'}</td>
+                <td class="${item.profit && item.profit.startsWith('+') ? 'success' : 'error'}">${item.profit || '-'}</td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+    countSpan.textContent = parsedData.length;
+}
+
+// ================= ЭКСПОРТ В EXCEL =================
+function exportToExcel() {
+    if (!parsedData || parsedData.length === 0) {
+        alert('Нет данных для экспорта');
+        return;
+    }
+    
+    try {
+        const exportData = parsedData.map(item => ({
+            'Дата добавления': item.addedDate || '',
+            'Дата матча': item.matchDateTime || '',
+            'Матч': item.event || '',
+            'Прогноз': item.prediction || '',
+            'Коэффициент': item.advisedOdds || '',
+            'Ставка': item.stake || '',
+            'Результат': item.result || '',
+            'Прибыль': item.profit || ''
+        }));
+        
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Прогнозы");
+        
+        const fileName = `tipstrr_${new Date().toISOString().slice(0,10)}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+        
+        alert(`Файл "${fileName}" сохранен!`);
+        
+    } catch (error) {
+        alert('Ошибка экспорта: ' + error.message);
+    }
+}
+
+// ================= ДЕМО-ДАННЫЕ =================
+function loadDemoData() {
+    parsedData = [];
+    
+    for (let i = 0; i < 8; i++) {
+        const teams = ['Team A', 'Team B', 'Team C', 'Team D'];
+        const team1 = teams[Math.floor(Math.random() * teams.length)];
+        const team2 = teams[Math.floor(Math.random() * teams.length)];
+        
+        if (team1 === team2) continue;
+        
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        
+        parsedData.push({
+            addedDate: date.toISOString(),
+            matchDateTime: date.toISOString(),
+            event: `${team1} v ${team2}`,
+            prediction: 'Match winner • Home',
+            advisedOdds: (Math.random() * 2 + 1.5).toFixed(2),
+            stake: '£10.00',
+            result: Math.random() > 0.5 ? 'won' : 'lost',
+            profit: Math.random() > 0.5 ? '+£6.50' : '-£10.00'
+        });
+    }
+    
+    showResults();
+    document.getElementById('export-btn').disabled = false;
+}
+
+// ================= ТЕСТОВЫЕ ФУНКЦИИ =================
+async function testAPI() {
+    console.clear();
+    console.log('=== ТЕСТ API ===');
+    
+    try {
         const testUrl = 'https://tipstrr.com/tipster/freguli/completed?skip=0&limit=5';
         const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(testUrl)}`;
         
+        console.log('📡 Отправляю запрос...');
         const response = await fetch(proxyUrl);
-        console.log('✅ Статус ответа:', response.status);
+        
+        console.log('📊 Статус:', response.status, response.statusText);
+        console.log('📦 Заголовки:', Object.fromEntries(response.headers.entries()));
         
         const data = await response.json();
-        console.log('📦 Полученные данные:', data);
-        console.log('📊 Тип данных:', Array.isArray(data) ? 'Массив' : 'Объект');
+        console.log('✅ Получены данные:', data);
+        console.log('📐 Тип:', typeof data);
+        console.log('🔢 Длина:', Array.isArray(data) ? data.length : 'не массив');
         
-        if (Array.isArray(data)) {
-            console.log(`📈 Количество элементов: ${data.length}`);
-            if (data.length > 0) {
-                console.log('🔍 Структура первого элемента:', Object.keys(data[0]));
-                console.log('📝 Пример данных:', JSON.stringify(data[0], null, 2).substring(0, 500) + '...');
-            }
-        } else {
-            console.log('🔍 Ключи объекта:', Object.keys(data));
+        if (Array.isArray(data) && data.length > 0) {
+            console.log('📋 Первый элемент:', data[0]);
         }
         
-        // Сохраняем для анализа
-        window.apiTestData = data;
-        
-        // Парсим тестовые данные
-        const parsed = parseAPITips(data);
-        console.log(`🎯 Распарсено прогнозов: ${parsed.length}`);
-        if (parsed.length > 0) {
-            console.log('📋 Пример распарсенного:', parsed[0]);
-        }
-        
-        alert(`Тест API завершен! Получено данных: ${Array.isArray(data) ? data.length : 'объект'}\nСмотрите консоль для деталей.`);
+        alert(`Тест завершен! Статус: ${response.status}\nСмотрите консоль.`);
         
     } catch (error) {
-        console.error('❌ Ошибка теста API:', error);
-        alert('Ошибка теста API: ' + error.message);
+        console.error('❌ Ошибка теста:', error);
+        alert('Ошибка теста: ' + error.message);
     }
 }
 
-// ====== ДОБАВЬТЕ КНОПКУ ДЛЯ ТЕСТА API В HTML ======
-// Вставьте эту кнопку в ваш index.html после кнопки "Тест":
-// <button onclick="testAPI()" class="btn-small" style="background: #6f42c1;">
-//     <i class="fas fa-satellite-dish"></i> Тест API
-// </button>
+async function simpleTest() {
+    console.log('=== ПРОСТОЙ ТЕСТ ===');
+    console.log('1. parsedData:', parsedData);
+    console.log('2. parseData функция:', typeof parseData);
+    console.log('3. Кнопка:', document.getElementById('parse-btn'));
+    
+    // Тест загрузки страницы
+    const testUrl = 'https://tipstrr.com/tipster/freguli';
+    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(testUrl)}`;
+    
+    try {
+        const response = await fetch(proxyUrl);
+        console.log('4. Тест запроса:', response.status);
+        
+        if (response.ok) {
+            const html = await response.text();
+            console.log('5. HTML размер:', html.length);
+            console.log('6. Содержит "tipster":', html.includes('tipster'));
+            console.log('7. Содержит "completed":', html.includes('completed'));
+        }
+    } catch (e) {
+        console.log('8. Ошибка запроса:', e.message);
+    }
+    
+    alert('Тест завершен, смотрите консоль');
+}
+
+// ================= УТИЛИТЫ =================
+function showLoading(show) {
+    const loading = document.getElementById('loading');
+    const btn = document.getElementById('parse-btn');
+    
+    if (!loading || !btn) {
+        console.error('Не найдены элементы загрузки');
+        return;
+    }
+    
+    if (show) {
+        loading.style.display = 'block';
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Парсинг...';
+    } else {
+        loading.style.display = 'none';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-play"></i> Парсить';
+    }
+}
+
+// Авто-тест при загрузке
+setTimeout(() => {
+    console.log('=== ПАРСЕР ЗАГРУЖЕН ===');
+    console.log('Доступные команды:');
+    console.log('1. parseData() - основной парсинг');
+    console.log('2. testAPI() - тест API');
+    console.log('3. simpleTest() - простой тест');
+    console.log('4. loadDemoData() - демо данные');
+}, 1000);
