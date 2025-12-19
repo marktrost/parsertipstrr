@@ -1,12 +1,17 @@
 {
-  "name": "my-static-site",
+  "name": "tipstrr-parser-server",
   "version": "1.0.0",
-  "description": "Сайт созданный в компьютерном клубе",
+  "description": "Парсер tipstrr с авторизацией",
+  "main": "server.js",
   "scripts": {
-    "start": "echo 'Static site - no server needed'"
+    "start": "node server.js"
   },
-  "staticFiles": {
-    "staticPath": ".",
-    "staticOutPath": "."
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "cookie": "^0.5.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1"
   }
 }
