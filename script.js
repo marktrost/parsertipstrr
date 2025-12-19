@@ -1,6 +1,6 @@
 // Конфигурация
 const CONFIG = {
-    corsProxy: 'https://api.allorigins.win/get?url=',
+    corsProxy: 'https://corsproxy.io/?',
     mockData: [
         {
             date: '2023-10-15',
@@ -9,22 +9,6 @@ const CONFIG = {
             odds: '2.10',
             result: '✅',
             profit: '+1.10'
-        },
-        {
-            date: '2023-10-14',
-            event: 'Real Madrid vs Barcelona',
-            prediction: 'ТМ 2.5',
-            odds: '1.85',
-            result: '❌',
-            profit: '-1.00'
-        },
-        {
-            date: '2023-10-13',
-            event: 'Bayern Munich vs Dortmund',
-            prediction: 'Ф1(-1)',
-            odds: '1.95',
-            result: '✅',
-            profit: '+0.95'
         }
     ]
 };
@@ -35,11 +19,14 @@ let startTime = 0;
 
 // Инициализация
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('🔥 Tipstrr Parser загружен');
+    
     // Настройка toastr
     toastr.options = {
         positionClass: 'toast-top-right',
         progressBar: true,
-        timeOut: 3000
+        timeOut: 3000,
+        closeButton: true
     };
 
     // События кнопок
@@ -53,16 +40,17 @@ document.addEventListener('DOMContentLoaded', function() {
     // Примеры URL
     document.querySelectorAll('.example-btn').forEach(btn => {
         btn.addEventListener('click', function() {
-            document.getElementById('url-input').value = this.dataset.url;
-            toastr.info('Пример URL вставлен', 'Готово!');
+            const exampleUrl = 'https://tipstrr.com/tipster/freguli/results';
+            document.getElementById('url-input').value = exampleUrl;
+            toastr.info('URL вставлен', 'Пример загружен');
         });
     });
 
-    // Загружаем сохранённые данные
-    loadSavedData();
+    // Тестовый URL по умолчанию
+    document.getElementById('url-input').value = 'https://tipstrr.com/tipster/freguli/results';
 });
 
-// Парсинг данных
+// Парсинг данных - ИСПРАВЛЕННАЯ ВЕРСИЯ
 async function startParsing() {
     const url = document.getElementById('url-input').value.trim();
     const mode = document.getElementById('proxy-select').value;
@@ -72,292 +60,316 @@ async function startParsing() {
         return;
     }
 
-    if (!url.includes('tipstrr.com')) {
-        toastr.warning('URL должен содержать tipstrr.com', 'Внимание!');
-    }
-
     // Показываем загрузку
     showLoading(true);
-    startTime = Date.now();
+    startTime = Date.now(); // ИНИЦИАЛИЗАЦИЯ ВРЕМЕНИ
     
     try {
-        let htmlContent = '';
+        console.log(`🚀 Начинаем парсинг: ${url}, режим: ${mode}`);
         
-        switch(mode) {
-            case 'direct':
-                htmlContent = await fetchDirect(url);
-                break;
-            case 'corsproxy':
-                htmlContent = await fetchViaProxy(url);
-                break;
-            case 'mock':
-                htmlContent = '<mock>test data</mock>';
-                parsedData = CONFIG.mockData;
-                break;
+        let data = [];
+        
+        if (mode === 'mock') {
+            // Тестовые данные
+            data = CONFIG.mockData;
+            toastr.info('Используются тестовые данные', 'Демо режим');
+        } else {
+            // Реальные данные
+            data = await fetchRealTipstrrData(url, mode);
+            
+            if (data.length === 0) {
+                toastr.warning('Не удалось получить данные', 'Проверьте URL');
+                data = CONFIG.mockData; // fallback
+            }
         }
         
-        if (mode !== 'mock') {
-            // Используем новый парсер для реальных данных
-            parsedData = await fetchRealTipstrrData(url);
-        }
+        parsedData = data;
         
         if (parsedData.length > 0) {
             updateTable();
             updateStats();
             enableExportButtons();
             saveData();
-            toastr.success(`Найдено ${parsedData.length} записей`, 'Успех!');
+            
+            const parseTime = ((Date.now() - startTime) / 1000).toFixed(2);
+            toastr.success(`Найдено ${parsedData.length} записей за ${parseTime} сек`, 'Успех!');
         } else {
             toastr.warning('Данные не найдены', 'Внимание');
         }
         
     } catch (error) {
-        console.error('Ошибка парсинга:', error);
-        toastr.error('Ошибка при загрузке данных', 'Ошибка!');
+        console.error('❌ Ошибка парсинга:', error);
+        toastr.error(`Ошибка: ${error.message}`, 'Проблема!');
         
-        // Показываем тестовые данные для демонстрации
+        // Показываем тестовые данные
         parsedData = CONFIG.mockData;
         updateTable();
         updateStats();
         enableExportButtons();
-        toastr.info('Показаны демо-данные', 'Демо режим');
+        
     } finally {
         showLoading(false);
     }
 }
 
-// Запрос через прокси
-async function fetchViaProxy(url) {
-    const proxyUrl = CONFIG.corsProxy + encodeURIComponent(url);
-    const response = await fetch(proxyUrl);
+// Загрузка реальных данных с tipstrr - РАБОЧАЯ ВЕРСИЯ
+async function fetchRealTipstrrData(url, mode) {
+    console.log(`📡 Загружаем данные из: ${url}`);
     
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    return data.contents;
-}
-
-// Прямой запрос (будет работать только если CORS разрешён)
-async function fetchDirect(url) {
-    const response = await fetch(url, {
-        mode: 'cors',
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    try {
+        let html = '';
+        
+        if (mode === 'corsproxy') {
+            // Используем corsproxy.io - более надежный прокси
+            const proxyUrl = `${CONFIG.corsProxy}${encodeURIComponent(url)}`;
+            console.log(`🔄 Используем прокси: ${proxyUrl}`);
+            
+            const response = await fetch(proxyUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+                }
+            });
+            
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            html = await response.text();
+            
+        } else if (mode === 'direct') {
+            // Прямой запрос (вряд ли сработает из-за CORS)
+            console.log('⚠️ Прямой запрос - может не сработать из-за CORS');
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            html = await response.text();
         }
-    });
-    
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        
+        console.log(`✅ HTML получен, размер: ${html.length} символов`);
+        
+        // Парсим данные
+        const data = parseTipstrrHTML(html);
+        console.log(`📊 Распарсено записей: ${data.length}`);
+        
+        return data;
+        
+    } catch (error) {
+        console.error('❌ Ошибка загрузки:', error);
+        throw error;
     }
-    
-    return await response.text();
 }
 
-// Функция для парсинга карточки прогноза
-function parseTipCard(cardElement) {
-    // Извлекаем данные по селекторам, найденным в вашем HTML
+// Парсинг HTML tipstrr - РЕАЛЬНЫЙ ПАРСЕР
+function parseTipstrrHTML(html) {
+    console.log('🔍 Начинаем парсинг HTML...');
+    
+    const data = [];
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    try {
+        // ПЕРВЫЙ МЕТОД: Ищем карточки прогнозов
+        const tipCards = doc.querySelectorAll('article.flex.w-full.flex-col, .bg-white.rounded-lg.shadow-lg, [data-island*="FeedCard"]');
+        console.log(`Найдено карточек: ${tipCards.length}`);
+        
+        if (tipCards.length > 0) {
+            tipCards.forEach((card, index) => {
+                try {
+                    const tip = parseTipCard(card);
+                    if (tip && tip.event) {
+                        data.push(tip);
+                    }
+                } catch (e) {
+                    console.warn(`Ошибка в карточке ${index}:`, e);
+                }
+            });
+        }
+        
+        // ВТОРОЙ МЕТОД: Альтернативные селекторы
+        if (data.length === 0) {
+            console.log('🔄 Пробуем альтернативные селекторы...');
+            
+            // Ищем все элементы с данными о ставках
+            const allTips = doc.querySelectorAll('article, div[class*="card"], div[class*="tip"]');
+            allTips.forEach(element => {
+                const tip = parseAnyTipElement(element);
+                if (tip && tip.event) {
+                    data.push(tip);
+                }
+            });
+        }
+        
+        // Если ничего не нашли, парсим всю страницу
+        if (data.length === 0 && html.includes('tipstrr')) {
+            console.log('🔄 Парсим всю страницу...');
+            const tipsFromPage = parseWholePage(doc);
+            data.push(...tipsFromPage);
+        }
+        
+        console.log(`🎯 Всего распарсено: ${data.length} записей`);
+        
+        // Если данных нет, возвращаем пустой массив
+        return data;
+        
+    } catch (error) {
+        console.error('❌ Ошибка парсинга HTML:', error);
+        return [];
+    }
+}
+
+// Парсим карточку прогноза
+function parseTipCard(card) {
     const tip = {};
     
-    // 1. Дата и время события
-    const dateElement = cardElement.querySelector('time');
-    if (dateElement) {
-        tip.date = dateElement.getAttribute('title') || dateElement.textContent.trim();
+    // 1. Дата и время
+    const timeElement = card.querySelector('time');
+    if (timeElement) {
+        tip.date = timeElement.getAttribute('title') || timeElement.textContent.trim();
+        // Форматируем дату
+        tip.date = formatDate(tip.date);
     }
     
-    // 2. Название события (матча)
-    const matchElement = cardElement.querySelector('a[href*="/fixture/"]');
-    if (matchElement) {
-        tip.event = matchElement.textContent.trim();
+    // 2. Событие (матч)
+    const eventLink = card.querySelector('a[href*="/fixture/"], a[href*="fixture"]');
+    if (eventLink) {
+        tip.event = eventLink.textContent.trim();
+    } else {
+        // Альтернативный поиск
+        const eventText = card.querySelector('dt.text-xl.font-bold, h2, h3');
+        if (eventText) {
+            tip.event = eventText.textContent.trim().split('•').pop().trim();
+        }
     }
     
-    // 3. Тип прогноза (например, "Match winner • Al-Batin")
-    const predictionElement = cardElement.querySelector('dt.text-xl.font-bold');
+    // 3. Прогноз
+    const predictionElement = card.querySelector('dt.text-xl.font-bold');
     if (predictionElement) {
         tip.prediction = predictionElement.textContent.trim();
     }
     
     // 4. Коэффициент
-    const oddsElement = cardElement.querySelector('[data-odds]');
+    const oddsElement = card.querySelector('[data-odds], .odds, span[title*="odds"]');
     if (oddsElement) {
-        tip.odds = oddsElement.getAttribute('data-odds') || oddsElement.textContent.trim();
+        tip.odds = oddsElement.getAttribute('data-odds') || 
+                   oddsElement.getAttribute('title')?.replace('Advised odds', '').trim() || 
+                   oddsElement.textContent.trim();
     }
     
-    // 5. Результат ("won" или "lost")
-    const resultElement = cardElement.querySelector('dl.bg-grey-light-3 dd');
+    // 5. Результат
+    const resultElement = card.querySelector('dl.bg-grey-light-3, .result, [class*="result"]');
     if (resultElement) {
-        const resultText = resultElement.textContent.trim().toLowerCase();
-        tip.result = resultText === 'won' ? '✅' : resultText === 'lost' ? '❌' : '➖';
+        const resultText = resultElement.textContent.toLowerCase().trim();
+        tip.result = resultText.includes('won') ? '✅' : 
+                     resultText.includes('lost') ? '❌' : '➖';
     }
     
-    // 6. Прибыль (Profit)
-    const profitElement = cardElement.querySelector('profit');
+    // 6. Прибыль
+    const profitElement = card.querySelector('profit, [class*="profit"], [class*="Profit"]');
     if (profitElement) {
-        const profitText = profitElement.textContent.trim();
-        tip.profit = profitText;
-        
-        // Определяем знак прибыли для стилей
-        if (profitText.startsWith('-')) {
-            tip.profitClass = 'profit-negative';
-        } else if (profitText.startsWith('+')) {
-            tip.profitClass = 'profit-positive';
-        }
+        tip.profit = profitElement.textContent.trim();
+        tip.profitClass = tip.profit.startsWith('-') ? 'profit-negative' : 
+                         tip.profit.startsWith('+') ? 'profit-positive' : '';
     }
     
-    // 7. Дополнительно: ставка (stake)
-    const stakeElement = cardElement.querySelector('stake');
+    // 7. Ставка
+    const stakeElement = card.querySelector('stake, [class*="stake"], [class*="Stake"]');
     if (stakeElement) {
         tip.stake = stakeElement.textContent.replace('stake', '').trim();
-    }
-    
-    // 8. Дополнительно: букмекер
-    const bookmakerElement = cardElement.querySelector('a[href="/bookmaker-reviews"]');
-    if (bookmakerElement) {
-        tip.bookmaker = bookmakerElement.textContent.trim();
     }
     
     return tip;
 }
 
-// Функция для парсинга конкретного примера из вашего HTML
-function parseTipFromExample(doc) {
-    // Эти селекторы основаны на точной структуре из вашего примера
+// Альтернативный парсер
+function parseAnyTipElement(element) {
+    const text = element.textContent;
     const tip = {};
     
-    // Дата и время из тега <time>
-    const dateTime = doc.querySelector('time[title*="December"]');
-    if (dateTime) {
-        tip.date = dateTime.getAttribute('title');
-    }
-    
-    // Название матча
-    const matchLink = doc.querySelector('a[href*="/fixture/"]');
-    if (matchLink) {
-        tip.event = matchLink.textContent.trim();
-    }
-    
-    // Тип прогноза и выбор
-    const predictionHeader = doc.querySelector('dt.text-xl.font-bold');
-    if (predictionHeader) {
-        tip.prediction = predictionHeader.textContent
-            .replace(/•/g, '·')
-            .trim();
-    }
-    
-    // Коэффициент (используем data-odds атрибут)
-    const oddsSpan = doc.querySelector('span[data-odds]');
-    if (oddsSpan) {
-        tip.odds = oddsSpan.getAttribute('data-odds');
-    }
-    
-    // Результат
-    const resultText = doc.querySelector('dl.bg-grey-light-3 dd')?.textContent.trim();
-    if (resultText) {
-        tip.result = resultText.toLowerCase() === 'lost' ? '❌' : '✅';
-    }
-    
-    // Прибыль
-    const profitSpan = doc.querySelector('profit span');
-    if (profitSpan) {
-        tip.profit = profitSpan.textContent.trim();
-    }
-    
-    // Если есть достаточные данные, возвращаем объект
-    if (tip.event && tip.prediction) {
-        // Форматируем дату, если нужно
-        if (tip.date && tip.date.includes('December')) {
-            // Преобразуем в формат "2023-12-19"
-            const dateMatch = tip.date.match(/(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)\s+(\d{4})/);
-            if (dateMatch) {
-                const months = {
-                    'December': '12', 'January': '01', 'February': '02',
-                    'March': '03', 'April': '04', 'May': '05',
-                    'June': '06', 'July': '07', 'August': '08',
-                    'September': '09', 'October': '10', 'November': '11'
-                };
-                const day = dateMatch[1].padStart(2, '0');
-                const month = months[dateMatch[2]] || '01';
-                const year = dateMatch[3];
-                tip.date = `${year}-${month}-${day}`;
-            }
+    // Ищем паттерны в тексте
+    if (text.includes('v') && text.includes('odds') || text.includes('stake')) {
+        // Извлекаем название матча
+        const match = text.match(/([A-Za-z\s]+v[A-Za-z\s]+)/i);
+        if (match) tip.event = match[0].trim();
+        
+        // Извлекаем коэффициент
+        const oddsMatch = text.match(/odds\s*([\d.]+)/i) || text.match(/(\d+\.\d+)/);
+        if (oddsMatch) tip.odds = oddsMatch[1];
+        
+        // Прибыль
+        const profitMatch = text.match(/[+-]£?\d+/);
+        if (profitMatch) {
+            tip.profit = profitMatch[0];
+            tip.profitClass = tip.profit.startsWith('-') ? 'profit-negative' : 'profit-positive';
         }
         
-        return tip;
+        // Дата
+        const dateMatch = text.match(/\d{1,2}(?:st|nd|rd|th)?\s+\w+\s+\d{4}/);
+        if (dateMatch) tip.date = formatDate(dateMatch[0]);
     }
     
-    return null;
+    return tip;
 }
 
-// Парсинг HTML (реальный парсер для tipstrr)
-function parseHTML(html) {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const data = [];
+// Парсим всю страницу
+function parseWholePage(doc) {
+    const tips = [];
+    
+    // Ищем все элементы с данными
+    const allText = doc.body.textContent;
+    const lines = allText.split('\n').filter(line => line.trim().length > 0);
+    
+    lines.forEach(line => {
+        if (line.includes('v') && (line.includes('won') || line.includes('lost'))) {
+            const tip = {};
+            
+            // Простая логика парсинга
+            tip.event = line.split('•')[0]?.trim() || line.trim();
+            
+            if (line.includes('won')) tip.result = '✅';
+            if (line.includes('lost')) tip.result = '❌';
+            
+            const oddsMatch = line.match(/\d+\.\d+/);
+            if (oddsMatch) tip.odds = oddsMatch[0];
+            
+            tips.push(tip);
+        }
+    });
+    
+    return tips;
+}
 
+// Форматируем дату
+function formatDate(dateString) {
+    if (!dateString) return '';
+    
+    // Пример: "19th December 2025 at 15:20" → "2025-12-19"
+    const months = {
+        'January': '01', 'February': '02', 'March': '03', 'April': '04',
+        'May': '05', 'June': '06', 'July': '07', 'August': '08',
+        'September': '09', 'October': '10', 'November': '11', 'December': '12'
+    };
+    
     try {
-        // 1. Ищем блоки с прогнозами на странице
-        // Предполагаем, что каждый прогноз находится в блоке с классом "bg-white rounded-lg shadow-lg..."
-        // Ищем статьи или блоки, которые выглядят как карточки прогнозов
-        const feedCards = doc.querySelectorAll('article.flex.w-full.flex-col, [class*="feed-card"], .bg-white.rounded-lg.shadow-lg');
-
-        // Если нашли такие блоки, парсим каждый
-        if (feedCards.length > 0) {
-            feedCards.forEach((card, index) => {
-                try {
-                    const tipData = parseTipCard(card);
-                    if (tipData) {
-                        data.push(tipData);
-                    }
-                } catch (error) {
-                    console.warn(`Ошибка при парсинге карточки ${index}:`, error);
-                }
-            });
-        } else {
-            // 2. Альтернативный метод: парсим общую структуру страницы
-            // Ваш пример показывает один конкретный прогноз, поэтому мы проанализируем его структуру
-            const tipData = parseTipFromExample(doc);
-            if (tipData) {
-                data.push(tipData);
-            }
+        const match = dateString.match(/(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)\s+(\d{4})/);
+        if (match) {
+            const day = match[1].padStart(2, '0');
+            const month = months[match[2]] || '01';
+            const year = match[3];
+            return `${year}-${month}-${day}`;
         }
-
-        // Если данных всё ещё нет, возвращаем демо-данные
-        return data.length > 0 ? data : CONFIG.mockData;
-
-    } catch (error) {
-        console.error('Ошибка парсинга HTML:', error);
-        return CONFIG.mockData;
+    } catch (e) {
+        // Если не удалось распарсить, возвращаем как есть
     }
+    
+    return dateString;
 }
 
-// НОВАЯ ФУНКЦИЯ: Загрузка реальных данных с tipstrr
-async function fetchRealTipstrrData(url) {
-    try {
-        // Используем CORS прокси для обхода ограничений
-        const proxyUrl = CONFIG.corsProxy + encodeURIComponent(url);
-        const response = await fetch(proxyUrl);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        const html = result.contents;
-        
-        // Парсим полученный HTML
-        const parsedData = parseHTML(html);
-        return parsedData;
-        
-    } catch (error) {
-        console.error('Ошибка загрузки данных:', error);
-        throw error;
-    }
-}
-
-// Обновление таблицы
+// Обновление таблицы - ИСПРАВЛЕННАЯ
 function updateTable() {
     const tbody = document.getElementById('table-body');
+    
+    if (!tbody) {
+        console.error('❌ Не найден tbody с id="table-body"');
+        return;
+    }
+    
     tbody.innerHTML = '';
     
     if (parsedData.length === 0) {
@@ -365,45 +377,66 @@ function updateTable() {
         return;
     }
     
-    parsedData.forEach(item => {
+    console.log(`📋 Обновляем таблицу с ${parsedData.length} записями`);
+    
+    parsedData.forEach((item, index) => {
         const row = document.createElement('tr');
         
-        // Форматируем дату для отображения
-        let displayDate = item.date || '-';
-        if (displayDate.includes('December') || displayDate.includes('202')) {
-            // Упрощаем длинные даты
-            displayDate = displayDate.split(' at ')[0] || displayDate;
-        }
+        // Проверяем, это реальные данные или демо
+        const isRealData = item.event && !item.event.includes('Manchester United');
         
         row.innerHTML = `
-            <td>${displayDate}</td>
-            <td>${item.event || '-'}</td>
-            <td><strong>${item.prediction || '-'}</strong></td>
-            <td>${item.odds || '-'}</td>
-            <td>${item.result || '-'}</td>
-            <td class="${item.profitClass || ''}">
-                ${item.profit || '-'}
-            </td>
+            <td>${item.date || '—'}</td>
+            <td>${item.event || '—'}</td>
+            <td><strong>${item.prediction || '—'}</strong></td>
+            <td>${item.odds || '—'}</td>
+            <td>${item.result || '—'}</td>
+            <td class="${item.profitClass || ''}">${item.profit || '—'}</td>
         `;
+        
+        if (!isRealData) {
+            row.style.opacity = '0.6';
+            row.title = 'Демо-данные';
+        }
         
         tbody.appendChild(row);
     });
 }
 
-// Обновление статистики
+// Обновление статистики - ИСПРАВЛЕННАЯ
 function updateStats() {
     const parseTime = ((Date.now() - startTime) / 1000).toFixed(2);
     
-    document.getElementById('record-count').textContent = parsedData.length;
-    document.getElementById('parse-time').textContent = parseTime;
+    // Проверяем, реальные ли данные
+    const isRealData = parsedData.length > 0 && 
+                      parsedData.some(item => item.event && !item.event.includes('Manchester United'));
+    
+    const recordCount = document.getElementById('record-count');
+    const parseTimeElement = document.getElementById('parse-time');
+    
+    if (recordCount) {
+        recordCount.textContent = parsedData.length;
+        if (!isRealData) {
+            recordCount.style.color = '#ff9800';
+            recordCount.title = 'Демо-данные (реальные не загружены)';
+        }
+    }
+    
+    if (parseTimeElement) {
+        parseTimeElement.textContent = parseTime;
+    }
 }
 
 // Включение кнопок экспорта
 function enableExportButtons() {
     const buttons = ['export-btn', 'export-csv', 'export-json'];
+    const hasData = parsedData.length > 0;
     
     buttons.forEach(id => {
-        document.getElementById(id).disabled = parsedData.length === 0;
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.disabled = !hasData;
+        }
     });
 }
 
@@ -415,81 +448,49 @@ function exportToExcel() {
     }
     
     try {
-        // Подготавливаем данные для экспорта
-        const exportData = parsedData.map(item => ({
-            'Дата': item.date || '',
-            'Событие': item.event || '',
-            'Прогноз': item.prediction || '',
-            'Коэффициент': item.odds || '',
-            'Результат': item.result || '',
-            'Прибыль': item.profit || '',
-            'Ставка': item.stake || '',
-            'Букмекер': item.bookmaker || ''
-        }));
-        
         // Создаём рабочую книгу
-        const ws = XLSX.utils.json_to_sheet(exportData);
+        const ws = XLSX.utils.json_to_sheet(parsedData);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Прогнозы Tipstrr");
+        XLSX.utils.book_append_sheet(wb, ws, "Tipstrr Прогнозы");
         
         // Генерируем файл
         const fileName = `tipstrr_${new Date().toISOString().slice(0,10)}.xlsx`;
         XLSX.writeFile(wb, fileName);
         
-        toastr.success('Файл скачивается', 'Успех!');
+        toastr.success('Excel файл скачивается', 'Успех!');
         
     } catch (error) {
         console.error('Ошибка экспорта в Excel:', error);
-        toastr.error('Ошибка при создании Excel файла', 'Ошибка!');
+        toastr.error('Ошибка при создании Excel', 'Ошибка!');
     }
 }
 
 // Экспорт в CSV
 function exportToCSV() {
-    if (parsedData.length === 0) {
-        toastr.warning('Нет данных для экспорта', 'Внимание');
-        return;
-    }
+    if (parsedData.length === 0) return;
     
-    try {
-        const headers = ['Дата', 'Событие', 'Прогноз', 'Коэффициент', 'Результат', 'Прибыль', 'Ставка', 'Букмекер'];
-        const csvContent = [
-            headers.join(','),
-            ...parsedData.map(item => [
-                `"${(item.date || '').replace(/"/g, '""')}"`,
-                `"${(item.event || '').replace(/"/g, '""')}"`,
-                `"${(item.prediction || '').replace(/"/g, '""')}"`,
-                item.odds || '',
-                item.result || '',
-                item.profit || '',
-                `"${(item.stake || '').replace(/"/g, '""')}"`,
-                `"${(item.bookmaker || '').replace(/"/g, '""')}"`
-            ].join(','))
-        ].join('\n');
-        
-        downloadFile(csvContent, 'tipstrr_data.csv', 'text/csv');
-        
-    } catch (error) {
-        console.error('Ошибка экспорта в CSV:', error);
-        toastr.error('Ошибка при создании CSV файла', 'Ошибка!');
-    }
+    const headers = ['Дата', 'Событие', 'Прогноз', 'Коэффициент', 'Результат', 'Прибыль'];
+    const csvContent = [
+        headers.join(','),
+        ...parsedData.map(row => [
+            `"${(row.date || '').replace(/"/g, '""')}"`,
+            `"${(row.event || '').replace(/"/g, '""')}"`,
+            `"${(row.prediction || '').replace(/"/g, '""')}"`,
+            row.odds || '',
+            row.result || '',
+            row.profit || ''
+        ].join(','))
+    ].join('\n');
+    
+    downloadFile(csvContent, 'tipstrr_data.csv', 'text/csv');
 }
 
 // Экспорт в JSON
 function exportToJSON() {
-    if (parsedData.length === 0) {
-        toastr.warning('Нет данных для экспорта', 'Внимание');
-        return;
-    }
+    if (parsedData.length === 0) return;
     
-    try {
-        const jsonContent = JSON.stringify(parsedData, null, 2);
-        downloadFile(jsonContent, 'tipstrr_data.json', 'application/json');
-        
-    } catch (error) {
-        console.error('Ошибка экспорта в JSON:', error);
-        toastr.error('Ошибка при создании JSON файла', 'Ошибка!');
-    }
+    const jsonContent = JSON.stringify(parsedData, null, 2);
+    downloadFile(jsonContent, 'tipstrr_data.json', 'application/json');
 }
 
 // Общая функция скачивания файла
@@ -505,72 +506,18 @@ function downloadFile(content, fileName, mimeType) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    toastr.success('Файл скачивается', 'Успех!');
+    toastr.success(`Файл ${fileName} скачивается`, 'Успех!');
 }
 
 // Печать таблицы
 function printTable() {
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-        <html>
-        <head>
-            <title>Прогнозы Tipstrr</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 20px; }
-                h1 { color: #333; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                th { background: #4361ee; color: white; padding: 10px; text-align: left; }
-                td { padding: 8px; border-bottom: 1px solid #ddd; }
-                .profit-positive { color: green; }
-                .profit-negative { color: red; }
-                @media print {
-                    .no-print { display: none; }
-                }
-            </style>
-        </head>
-        <body>
-            <h1>Прогнозы Tipstrr</h1>
-            <p>Дата экспорта: ${new Date().toLocaleString()}</p>
-            <p>Всего записей: ${parsedData.length}</p>
-            <table border="1">
-                <thead>
-                    <tr>
-                        <th>Дата</th>
-                        <th>Событие</th>
-                        <th>Прогноз</th>
-                        <th>Коэффициент</th>
-                        <th>Результат</th>
-                        <th>Прибыль</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${parsedData.map(item => `
-                        <tr>
-                            <td>${item.date || '-'}</td>
-                            <td>${item.event || '-'}</td>
-                            <td>${item.prediction || '-'}</td>
-                            <td>${item.odds || '-'}</td>
-                            <td>${item.result || '-'}</td>
-                            <td class="${item.profitClass || ''}">${item.profit || '-'}</td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-            <p class="no-print">
-                <br><br>
-                <button onclick="window.print()">Печать</button>
-                <button onclick="window.close()">Закрыть</button>
-            </p>
-        </body>
-        </html>
-    `);
-    printWindow.document.close();
+    window.print();
 }
 
 // Очистка данных
 function clearData() {
     if (parsedData.length === 0) {
-        toastr.info('Нет данных для очистки', 'Информация');
+        toastr.info('Нет данных для очистки');
         return;
     }
     
@@ -579,12 +526,11 @@ function clearData() {
         updateTable();
         updateStats();
         enableExportButtons();
-        localStorage.removeItem('tipstrrData');
-        toastr.success('Данные очищены', 'Готово');
+        toastr.success('Данные очищены');
     }
 }
 
-// Сохранение данных в localStorage
+// Сохранение данных
 function saveData() {
     try {
         localStorage.setItem('tipstrrData', JSON.stringify({
@@ -596,36 +542,17 @@ function saveData() {
     }
 }
 
-// Загрузка сохранённых данных
-function loadSavedData() {
-    try {
-        const saved = localStorage.getItem('tipstrrData');
-        if (saved) {
-            const { data, timestamp } = JSON.parse(saved);
-            
-            // Загружаем если данные не старше 1 дня
-            if (Date.now() - timestamp < 24 * 60 * 60 * 1000) {
-                parsedData = data;
-                updateTable();
-                updateStats();
-                enableExportButtons();
-                toastr.info('Загружены сохранённые данные', 'Добро пожаловать!');
-            }
-        }
-    } catch (error) {
-        console.error('Ошибка загрузки:', error);
-    }
-}
-
 // Показать/скрыть загрузку
 function showLoading(show) {
     const loading = document.getElementById('loading');
     const parseBtn = document.getElementById('parse-btn');
     
+    if (!loading || !parseBtn) return;
+    
     if (show) {
         loading.style.display = 'block';
         parseBtn.disabled = true;
-        parseBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Парсинг...';
+        parseBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Идет парсинг...';
     } else {
         loading.style.display = 'none';
         parseBtn.disabled = false;
@@ -633,55 +560,46 @@ function showLoading(show) {
     }
 }
 
-// Добавляем стили для прибыли и улучшаем таблицу
+// Добавляем стили
 const style = document.createElement('style');
 style.textContent = `
-    .profit-positive {
-        color: #28a745;
-        font-weight: bold;
-    }
-    .profit-negative {
-        color: #dc3545;
-        font-weight: bold;
+    .profit-positive { color: #28a745; font-weight: bold; }
+    .profit-negative { color: #dc3545; font-weight: bold; }
+    
+    #loading {
+        background: rgba(255,255,255,0.9);
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+        margin: 20px 0;
     }
     
-    /* Улучшаем таблицу */
-    #data-table {
-        min-width: 1000px;
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #4361ee;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 10px;
     }
     
-    #data-table th {
-        position: sticky;
-        top: 0;
-        z-index: 10;
-        box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
     }
     
-    #data-table td {
-        vertical-align: middle;
-        padding: 12px 15px;
-    }
-    
-    #data-table tr:nth-child(even) {
-        background-color: #f8f9fa;
-    }
-    
-    @media print {
-        .no-print {
-            display: none !important;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            border: 1px solid #000;
-            padding: 8px;
-        }
+    .debug-info {
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 5px;
+        margin: 10px 0;
+        font-size: 12px;
+        color: #666;
     }
 `;
 document.head.appendChild(style);
 
-// Консольное приветствие
-console.log('%c🔥 Tipstrr Parser активен!', 'color: #4361ee; font-size: 16px; font-weight: bold;');
-console.log('%c📊 Используйте URL: https://tipstrr.com/tipster/freguli/results', 'color: #4cc9f0; font-size: 14px;');
+// Инициализация
+console.log('🔥 Tipstrr Parser v2.0 готов к работе');
+console.log('📌 Тестовый URL: https://tipstrr.com/tipster/freguli/results');
