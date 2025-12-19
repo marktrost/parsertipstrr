@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мой сайт из компьютерного клуба</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <div class="logo">
+                <i class="fas fa-laptop-code"></i>
+                <span>DevClub</span>
+            </div>
+            <ul class="nav-links">
+                <li><a href="#home"><i class="fas fa-home"></i> Главная</a></li>
+                <li><a href="#about"><i class="fas fa-user"></i> Обо мне</a></li>
+                <li><a href="#projects"><i class="fas fa-code"></i> Проекты</a></li>
+                <li><a href="#contact"><i class="fas fa-envelope"></i> Контакты</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section id="home" class="hero">
+            <div class="hero-content">
+                <h1>Привет! <span class="wave">👋</span></h1>
+                <h2>Я создал этот сайт прямо из компьютерного клуба</h2>
+                <p>И сейчас разверну его на Render через GitHub</p>
+                <div class="cta-buttons">
+                    <a href="#projects" class="btn primary">Смотреть проекты</a>
+                    <a href="#contact" class="btn secondary">Связаться со мной</a>
+                </div>
+            </div>
+            <div class="hero-image">
+                <div class="code-window">
+                    <div class="window-header">
+                        <div class="window-buttons">
+                            <span class="close"></span>
+                            <span class="minimize"></span>
+                            <span class="maximize"></span>
+                        </div>
+                        <span class="window-title">terminal</span>
+                    </div>
+                    <div class="window-content">
+                        <p>$ git commit -m "Сайт создан!"</p>
+                        <p>$ git push origin main</p>
+                        <p class="blink">▌</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="about" class="section">
+            <h2><i class="fas fa-star"></i> Обо мне</h2>
+            <div class="about-content">
+                <div class="card">
+                    <i class="fas fa-rocket"></i>
+                    <h3>Быстрый старт</h3>
+                    <p>Создание сайта прямо из браузера без установки программ</p>
+                </div>
+                <div class="card">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <h3>Деплой на Render</h3>
+                    <p>Бесплатный хостинг для статических сайтов</p>
+                </div>
+                <div class="card">
+                    <i class="fas fa-magic"></i>
+                    <h3>Простота</h3>
+                    <p>Ничего лишнего, только HTML, CSS и JavaScript</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="projects" class="section dark">
+            <h2><i class="fas fa-code"></i> Мои проекты</h2>
+            <div class="projects-grid">
+                <div class="project-card">
+                    <div class="project-icon">
+                        <i class="fas fa-globe"></i>
+                    </div>
+                    <h3>Этот сайт</h3>
+                    <p>Создан и развернут за 30 минут</p>
+                    <div class="tech-tags">
+                        <span>HTML</span>
+                        <span>CSS</span>
+                        <span>JavaScript</span>
+                    </div>
+                </div>
+                <div class="project-card">
+                    <div class="project-icon">
+                        <i class="fas fa-gamepad"></i>
+                    </div>
+                    <h3>Игра на JS</h3>
+                    <p>Простая игра, написанная на чистом JavaScript</p>
+                    <div class="tech-tags">
+                        <span>JavaScript</span>
+                        <span>Canvas</span>
+                    </div>
+                </div>
+                <div class="project-card">
+                    <div class="project-icon">
+                        <i class="fas fa-mobile-alt"></i>
+                    </div>
+                    <h3>Адаптивный дизайн</h3>
+                    <p>Сайт, который отлично выглядит на всех устройствах</p>
+                    <div class="tech-tags">
+                        <span>CSS3</span>
+                        <span>Flexbox</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="contact" class="section">
+            <h2><i class="fas fa-envelope"></i> Контакты</h2>
+            <div class="contact-info">
+                <p><i class="fas fa-map-marker-alt"></i> Создано в компьютерном клубе</p>
+                <p><i class="fas fa-clock"></i> В любое время, когда есть доступ к ПК</p>
+                <p><i class="fas fa-github"></i> GitHub: ваш-логин</p>
+            </div>
+            
+            <div class="counter">
+                <p><i class="fas fa-eye"></i> Посетители сайта:</p>
+                <h3 id="visit-count">0</h3>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Создано с <i class="fas fa-heart"></i> прямо в компьютерном клубе</p>
+        <p>© 2023 | Развернуто на <a href="https://render.com" target="_blank">Render</a></p>
+        <div class="social">
+            <a href="#"><i class="fab fa-github"></i></a>
+            <a href="#"><i class="fab fa-codepen"></i></a>
+            <a href="#"><i class="fas fa-envelope"></i></a>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
