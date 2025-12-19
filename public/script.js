@@ -390,3 +390,108 @@ setTimeout(() => {
     console.log('3. simpleTest() - простой тест');
     console.log('4. loadDemoData() - демо данные');
 }, 1000);
+// ====== ФУНКЦИЯ ДЛЯ ТОЧНОГО ПАРСИНГА ======
+async function parseExactData() {
+    console.log('🎯 Запускаю точный парсинг по шаблону...');
+    showLoading(true);
+
+    try {
+        // 1. Загружаем страницу
+        const url = document.getElementById('url-input').value;
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+        const response = await fetch(proxyUrl);
+        const html = await response.text();
+
+        // 2. Парсим HTML в объект для поиска
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        // 3. Находим ВСЕ статьи с прогнозами по точному селектору
+        // (основываясь на структуре блока, который ты отправил)
+        const feedArticles = doc.querySelectorAll('article.flex.w-full.flex-col');
+        console.log(`🔍 Найдено статей (feedArticles): ${feedArticles.length}`);
+
+        const allTips = [];
+
+        // 4. Проходим по каждой статье и извлекаем данные
+        feedArticles.forEach((article) => {
+            const tipData = {};
+
+            // Ищем данные по точным селекторам из твоего HTML
+            const titleLink = article.querySelector('a[href*="/fixture/"]');
+            const marketDt = article.querySelector('dt.text-xl');
+            const oddsSpan = article.querySelector('span[data-odds]');
+            const stakeElement = article.querySelector('stake'); // Селектор по тегу <stake>
+            const resultDiv = article.querySelector('dl.bg-success-dark-2'); // Блок с результатом "won"
+            const profitElement = article.querySelector('profit'); // Селектор по тегу <profit>
+            const addedDateLink = article.querySelector('a[href*="/tips/"] time');
+            const matchDateElement = article.querySelectorAll('local-date time')[1]; // Второй <time> в блоке
+
+            // Заполняем объект, если нашли
+            if (titleLink) {
+                tipData.event = titleLink.textContent.trim(); // "Kocaelispor v Antalyaspor"
+            }
+            if (marketDt) {
+                tipData.prediction = marketDt.textContent.trim(); // "Match winner • Kocaelispor"
+            }
+            if (oddsSpan) {
+                tipData.advisedOdds = oddsSpan.getAttribute('data-odds') || oddsSpan.textContent; // "1.63"
+            }
+            if (stakeElement) {
+                tipData.stake = stakeElement.textContent.replace('stake', '').trim(); // "£10"
+            }
+            if (resultDiv) {
+                tipData.result = 'won'; // Если найден зеленый блок
+            } else {
+                tipData.result = 'lost'; // Предполагаем проигрыш, если его нет
+            }
+            if (profitElement) {
+                tipData.profit = profitElement.textContent.trim(); // "+£6.32"
+            }
+            if (addedDateLink) {
+                tipData.addedDate = addedDateLink.getAttribute('datetime'); // "2025-12-17T09:49:04.000Z"
+            }
+            if (matchDateElement) {
+                tipData.matchDateTime = matchDateElement.getAttribute('datetime'); // "2025-12-19T17:00:00.000Z"
+            }
+
+            // Добавляем прогноз в итоговый массив, только если есть название события
+            if (tipData.event) {
+                allTips.push(tipData);
+            }
+        });
+
+        console.log(`✅ Точно распарсено прогнозов: ${allTips.length}`);
+
+        // 5. Показываем результаты
+        if (allTips.length > 0) {
+            window.parsedData = allTips;
+            showResults();
+            document.getElementById('export-btn').disabled = false;
+            alert(`✅ Успех! На странице найдено ${allTips.length} реальных прогнозов.`);
+        } else {
+            alert('🤔 На странице не найдено структуры прогнозов. Возможно, изменилась вёрстка.');
+        }
+
+    } catch (error) {
+        console.error('❌ Ошибка в точном парсере:', error);
+        alert('Ошибка загрузки: ' + error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ====== ОБНОВЛЯЕМ ОБРАБОТЧИК КНОПКИ ======
+// Убедись, что при загрузке страницы кнопка "Парсить" вызывает НОВУЮ функцию
+document.addEventListener('DOMContentLoaded', function() {
+    // ... остальной код инициализации ...
+
+    // Перепривязываем кнопку на новую функцию
+    const parseBtn = document.getElementById('parse-btn');
+    if(parseBtn) {
+        // Удаляем старый обработчик (если был через onclick в HTML)
+        parseBtn.onclick = null;
+        // Вешаем новый
+        parseBtn.addEventListener('click', parseExactData);
+    }
+});
