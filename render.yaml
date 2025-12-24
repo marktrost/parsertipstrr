@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: tipstrr-parser
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TIPSTRR_EMAIL
+        sync: false  # Будет устанавливаться вручную в Render Dashboard
+      - key: TIPSTRR_PASSWORD
+        sync: false  # Будет устанавливаться вручную
+      - key: FRONTEND_URL
+        value: https://твой-фронтенд.onrender.com
