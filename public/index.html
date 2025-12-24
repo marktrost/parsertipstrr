@@ -3,78 +3,132 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tipstrr Parser - Простой парсер</title>
+    <title>Tipstrr Parser - Реальный парсер</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
+        body { background: #f5f5f5; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #333; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+        .card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h2 { margin-bottom: 15px; color: #444; }
+        .input-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; }
+        .btn { background: #007bff; color: white; border: none; padding: 12px 24px; border-radius: 5px; cursor: pointer; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+        .btn:hover { background: #0056b3; }
+        .btn-small { background: #28a745; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+        .btn:disabled, .btn-small:disabled { background: #ccc; cursor: not-allowed; }
+        #loading { margin-top: 15px; text-align: center; }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #007bff; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .stats { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { background: #007bff; color: white; padding: 12px; text-align: left; }
+        td { padding: 10px; border-bottom: 1px solid #ddd; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .status-badge { padding: 3px 8px; border-radius: 10px; font-size: 12px; }
+        .status-online { background: #d4edda; color: #155724; }
+        .status-offline { background: #f8d7da; color: #721c24; }
+        .server-info { background: #e8f4fd; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 14px; }
+    </style>
 </head>
 <body>
     <div class="container">
-        <h1><i class="fas fa-code"></i> Tipstrr Parser</h1>
+        <h1><i class="fas fa-code"></i> Tipstrr Parser <span id="server-status" class="status-badge status-offline">Сервер: проверка...</span></h1>
+        
+        <div id="server-info" class="server-info" style="display: none;">
+            <div><strong>Статус сервера:</strong> <span id="server-status-text">Проверка...</span></div>
+            <div><strong>Время сервера:</strong> <span id="server-time">-</span></div>
+            <div><strong>Режим:</strong> <span id="server-mode">-</span></div>
+        </div>
         
         <div class="card">
-            <h2>Парсинг прогнозов</h2>
+            <h2><i class="fas fa-cloud-download-alt"></i> Парсинг реальных прогнозов</h2>
+            <p style="margin-bottom: 15px; color: #666;">Данные загружаются с сервера с авторизацией на Tipstrr.com</p>
             
             <div class="input-group">
-                <label>URL страницы:</label>
-                <input type="text" id="url-input" value="https://tipstrr.com/tipster/freguli/results" readonly>
+                <label><i class="fas fa-link"></i> Источник данных:</label>
+                <input type="text" value="https://tipstrr.com/tipster/freguli/results" readonly style="background: #f8f9fa;">
             </div>
             
             <div class="input-group">
-                <label>Количество:</label>
+                <label><i class="fas fa-sort-amount-down"></i> Количество прогнозов:</label>
                 <select id="count-select">
                     <option value="10">10</option>
                     <option value="20" selected>20</option>
                     <option value="50">50</option>
+                    <option value="100">100</option>
                 </select>
             </div>
             
-            <button id="parse-btn" class="btn">
-                <i class="fas fa-play"></i> Парсить
-            </button>
-            <!-- Убрал onclick и добавил кнопки для отладки -->
-            <button onclick="testAPI()" class="btn-small" style="background: #6c757d;">
-                <i class="fas fa-vial"></i> Тест API
-            </button>
-            <button onclick="simpleTest()" class="btn-small" style="background: #dc3545;">
-                <i class="fas fa-bug"></i> Диагностика
-            </button>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button id="parse-btn" class="btn">
+                    <i class="fas fa-play"></i> Загрузить реальные данные
+                </button>
+                <button id="debug-btn" class="btn-small" style="background: #6c757d;">
+                    <i class="fas fa-vial"></i> Проверить сервер
+                </button>
+                <button id="stats-btn" class="btn-small" style="background: #17a2b8;">
+                    <i class="fas fa-chart-bar"></i> Статистика
+                </button>
+                <button id="force-btn" class="btn-small" style="background: #dc3545;">
+                    <i class="fas fa-sync-alt"></i> Принудительное обновление
+                </button>
+            </div>
             
             <div id="loading" style="display:none;">
                 <div class="spinner"></div>
-                <p>Парсинг...</p>
+                <p>Загрузка реальных данных с Tipstrr...</p>
             </div>
         </div>
         
         <div class="card">
-            <h2>Результаты</h2>
-            
             <div class="stats">
-                <span>Найдено: <strong id="count">0</strong></span>
-                <button id="export-btn" class="btn-small" disabled>
-                    <i class="fas fa-download"></i> Excel
-                </button>
+                <div>
+                    <span>Найдено прогнозов: <strong id="count">0</strong></span>
+                    <span id="cache-info" style="margin-left: 15px; font-size: 12px; color: #666; display: none;">
+                        <i class="fas fa-database"></i> Кэшировано
+                    </span>
+                </div>
+                <div>
+                    <button id="export-btn" class="btn-small" disabled>
+                        <i class="fas fa-download"></i> Экспорт в Excel
+                    </button>
+                </div>
             </div>
             
-            <!-- Обновленная таблица под 8 полей -->
-            <table id="results-table">
-                <thead>
-                    <tr>
-                        <th>Дата добавления</th>
-                        <th>Дата матча</th>
-                        <th>Матч</th>
-                        <th>Прогноз</th>
-                        <th>Коэф.</th>
-                        <th>Ставка</th>
-                        <th>Результат</th>
-                        <th>Прибыль</th>
-                    </tr>
-                </thead>
-                <tbody id="results-body">
-                    <tr>
-                        <td colspan="8">Нет данных</td>
-                    </tr>
-                </tbody>
-            </table>
+            <div style="overflow-x: auto;">
+                <table id="results-table">
+                    <thead>
+                        <tr>
+                            <th>Дата</th>
+                            <th>Матч</th>
+                            <th>Прогноз</th>
+                            <th>Коэф.</th>
+                            <th>Ставка</th>
+                            <th>Результат</th>
+                            <th>Прибыль</th>
+                            <th>Лига</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-body">
+                        <tr>
+                            <td colspan="8">Нажмите "Загрузить реальные данные" для начала</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="card" style="background: #f8f9fa; font-size: 14px;">
+            <h3><i class="fas fa-info-circle"></i> Информация</h3>
+            <p><strong>Важно:</strong> Этот парсер использует реальную авторизацию на Tipstrr.com</p>
+            <p><strong>Статус:</strong> <span id="auth-status">Проверка авторизации...</span></p>
+            <p><strong>Последнее обновление:</strong> <span id="last-update">-</span></p>
+            <p style="color: #666; margin-top: 10px;">При проблемах проверьте логи сервера на Render.com</p>
         </div>
     </div>
 
