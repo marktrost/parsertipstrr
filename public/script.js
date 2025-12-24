@@ -1,839 +1,439 @@
-require('dotenv').config();
-const express = require('express');
-const axios = require('axios');
-const cheerio = require('cheerio');
-const cookie = require('cookie');
-const cors = require('cors');
-const helmet = require('helmet');
-const compression = require('compression');
-const path = require('path');
-const fs = require('fs');
+// Tipstrr Parser Client - Браузерная версия
+let parsedData = [];
+let serverBaseUrl = '';
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// =====================
-// Безопасность и Middleware
-// =====================
-app.use(helmet({
-    contentSecurityPolicy: {
-        directives: {
-            defaultSrc: ["'self'"],
-            styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
-            fontSrc: ["'self'", "https://cdnjs.cloudflare.com"],
-            imgSrc: ["'self'", "data:", "https:"]
-        }
+// Автоматически определяем URL сервера
+function detectServerUrl() {
+    const currentUrl = window.location.origin;
+    
+    // Если на Render - используем текущий домен
+    if (currentUrl.includes('render.com')) {
+        serverBaseUrl = currentUrl;
+    } else if (currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1')) {
+        // Локальная разработка
+        serverBaseUrl = 'http://localhost:3000';
+    } else {
+        // Продакшен на Render (замени на свой URL)
+        serverBaseUrl = 'https://parsertipstrrweb.onrender.com';
     }
-}));
-app.use(compression());
-app.use(cors({
-    origin: function(origin, callback) {
-        // Разрешаем все origins в разработке
-        if (!origin || process.env.NODE_ENV !== 'production') {
-            return callback(null, true);
-        }
-        
-        // На продакшене разрешаем конкретные домены
-        const allowedOrigins = [
-            'https://tipstrr-parser.onrender.com',
-            'http://localhost:3000',
-            'http://localhost:5500',
-            'http://127.0.0.1:5500',
-            /\.onrender\.com$/
-        ];
-        
-        if (allowedOrigins.some(allowed => {
-            if (typeof allowed === 'string') return origin === allowed;
-            if (allowed instanceof RegExp) return allowed.test(origin);
-            return false;
-        })) {
-            return callback(null, true);
-        }
-        
-        callback(new Error('Not allowed by CORS'));
-    },
-    credentials: true,
-    optionsSuccessStatus: 200
-}));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// =====================
-// Конфигурация
-// =====================
-const TIPSTRR_CONFIG = {
-    baseUrl: 'https://tipstrr.com',
-    loginUrl: 'https://tipstrr.com/login',
-    resultsUrl: 'https://tipstrr.com/tipster/freguli/results',
-    headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1'
-    }
-};
-
-// =====================
-// Глобальные переменные
-// =====================
-let authSession = {
-    cookies: null,
-    csrfToken: null,
-    lastLogin: 0,
-    isLoggedIn: false
-};
-
-let cachedData = {
-    tips: [],
-    timestamp: 0,
-    ttl: 5 * 60 * 1000 // 5 минут кэш
-};
-
-// =====================
-// ОБНОВЛЕННАЯ функция getCsrfToken() - ИСПРАВЛЕНА!
-// =====================
-async function getCsrfToken() {
-    try {
-        console.log('🔐 Получаю CSRF токен...');
-        const response = await axios.get(TIPSTRR_CONFIG.loginUrl, {
-            headers: TIPSTRR_CONFIG.headers,
-            timeout: 10000
-        });
-        
-        const $ = cheerio.load(response.data);
-        
-        // Пробуем ВСЕ возможные способы найти токен:
-        let csrfToken = $('meta[name="csrf-token"]').attr('content') ||
-                       $('input[name="_token"]').val() ||
-                       $('input[name="csrf_token"]').val() ||
-                       $('input[name="csrf-token"]').val();
-        
-        // Если не нашли в мета-тегах или инпутах, ищем в скриптах
-        if (!csrfToken) {
-            const scriptContent = $('script').text();
-            // Разные паттерны, которые могут содержать токен
-            const patterns = [
-                /csrfToken.*?["']([^"']+)["']/,
-                /_token.*?["']([^"']+)["']/,
-                /csrf-token.*?["']([^"']+)["']/,
-                /window\.csrfToken\s*=\s*["']([^"']+)["']/
-            ];
-            
-            for (const pattern of patterns) {
-                const match = scriptContent.match(pattern);
-                if (match && match[1]) {
-                    csrfToken = match[1];
-                    break;
-                }
-            }
-        }
-        
-        // Последняя попытка: ищем в скрытых полях формы
-        if (!csrfToken) {
-            $('input[type="hidden"]').each((i, element) => {
-                const name = $(element).attr('name');
-                if (name && (name.includes('token') || name.includes('csrf'))) {
-                    csrfToken = $(element).val();
-                    return false; // выходим из цикла
-                }
-            });
-        }
-        
-        if (csrfToken) {
-            console.log('✅ CSRF токен найден:', csrfToken.substring(0, 20) + '...');
-        } else {
-            console.warn('⚠️ CSRF токен не найден. Страница логина могла измениться.');
-            // Сохраняем HTML для отладки
-            fs.writeFileSync('login_debug.html', response.data);
-            console.log('💾 HTML страницы логина сохранен в login_debug.html');
-        }
-        
-        return csrfToken;
-        
-    } catch (error) {
-        console.error('❌ Ошибка получения CSRF:', error.message);
-        return null;
-    }
+    
+    console.log('🌐 Сервер определен:', serverBaseUrl);
+    return serverBaseUrl;
 }
 
-// =====================
-// Функции авторизации
-// =====================
-async function loginToTipstrr() {
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🔄 Tipstrr Parser загружен (браузерная версия)');
+    
+    // Определяем URL сервера
+    serverBaseUrl = detectServerUrl();
+    
+    // Назначаем обработчики кнопок
+    document.getElementById('parse-btn').addEventListener('click', fetchRealData);
+    document.getElementById('export-btn').addEventListener('click', exportToExcel);
+    
+    // Если есть кнопки для отладки
+    const debugBtn = document.getElementById('debug-btn');
+    const statsBtn = document.getElementById('stats-btn');
+    const forceBtn = document.getElementById('force-btn');
+    
+    if (debugBtn) debugBtn.addEventListener('click', checkServerStatus);
+    if (statsBtn) statsBtn.addEventListener('click', showStats);
+    if (forceBtn) forceBtn.addEventListener('click', () => fetchRealData(true));
+    
+    // Проверяем статус сервера при загрузке
+    checkServerStatus();
+    
+    console.log('✅ Парсер готов к работе! Нажми "Загрузить реальные данные"');
+});
+
+// Проверка статуса сервера
+async function checkServerStatus() {
     try {
-        console.log('🔐 Начинаю процедуру входа на Tipstrr...');
+        updateStatus('Сервер: проверка...', 'status-offline');
         
-        // Пробуем получить страницу логина несколько раз
-        let csrfToken = null;
-        
-        for (let attempt = 1; attempt <= 3; attempt++) {
-            console.log(`🔄 Попытка ${attempt} получения CSRF токена...`);
-            csrfToken = await getCsrfToken();
-            if (csrfToken) break;
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Ждем 2 сек
-        }
-        
-        if (!csrfToken) {
-            // Экстренный вариант: попробуем войти без токена
-            console.log('⚠️ Пробую вход без CSRF токена...');
-            csrfToken = 'no-token-found';
-        }
-        
-        // Подготовка данных для входа
-        const formData = new URLSearchParams();
-        formData.append('email', process.env.TIPSTRR_EMAIL || 'kzgansta@gmail.com');
-        formData.append('password', process.env.TIPSTRR_PASSWORD || 'gmaMob8989bl!');
-        formData.append('_token', csrfToken);
-        formData.append('remember', 'on');
-        
-        console.log('📤 Отправляю запрос на вход...');
-        console.log('Email:', process.env.TIPSTRR_EMAIL ? 'Установлен' : 'Не установлен');
-        
-        const response = await axios.post(TIPSTRR_CONFIG.loginUrl, formData, {
-            headers: {
-                ...TIPSTRR_CONFIG.headers,
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Origin': TIPSTRR_CONFIG.baseUrl,
-                'Referer': TIPSTRR_CONFIG.loginUrl,
-                'X-CSRF-TOKEN': csrfToken
-            },
-            maxRedirects: 0,
-            validateStatus: function(status) {
-                return status >= 300 && status < 303; // Ожидаем редирект при успешном входе
-            },
-            timeout: 15000
+        const response = await fetch(`${serverBaseUrl}/api/health`, {
+            signal: AbortSignal.timeout(5000)
         });
         
-        console.log('📥 Ответ от сервера:', response.status);
+        if (!response.ok) {
+            throw new Error(`HTTP ошибка: ${response.status}`);
+        }
         
-        // Проверяем куки
-        if (response.headers['set-cookie']) {
-            const cookiesArray = response.headers['set-cookie'];
-            authSession.cookies = cookiesArray.map(c => {
-                const parsed = cookie.parse(c);
-                return Object.entries(parsed)
-                    .map(([key, value]) => `${key}=${value}`)
-                    .join('; ');
-            }).join('; ');
+        const data = await response.json();
+        
+        if (data.status === 'ok') {
+            updateStatus('Сервер: онлайн', 'status-online');
             
-            authSession.csrfToken = csrfToken;
-            authSession.lastLogin = Date.now();
-            authSession.isLoggedIn = true;
+            // Обновляем информацию о сервере
+            const serverInfo = document.getElementById('server-info');
+            const statusText = document.getElementById('server-status-text');
+            const serverTime = document.getElementById('server-time');
+            const serverMode = document.getElementById('server-mode');
             
-            console.log('✅ Успешный вход! Куки сохранены.');
-            console.log('📊 Длина кук:', authSession.cookies.length);
-            
-            // Тестовый запрос для проверки
-            await testAuthSession();
+            if (serverInfo) serverInfo.style.display = 'block';
+            if (statusText) statusText.textContent = '✅ Онлайн';
+            if (serverTime) serverTime.textContent = new Date(data.timestamp).toLocaleString('ru-RU');
+            if (serverMode) serverMode.textContent = data.environment || 'production';
             
             return true;
-        }
-        
-        throw new Error('Куки не получены');
-        
-    } catch (error) {
-        console.error('❌ Ошибка входа:', error.message);
-        if (error.response) {
-            console.error('Статус:', error.response.status);
-            console.error('Заголовки:', error.response.headers);
-        }
-        authSession.isLoggedIn = false;
-        return false;
-    }
-}
-
-async function testAuthSession() {
-    try {
-        console.log('🧪 Тестирую авторизованную сессию...');
-        
-        const testResponse = await axios.get(TIPSTRR_CONFIG.resultsUrl, {
-            headers: {
-                ...TIPSTRR_CONFIG.headers,
-                'Cookie': authSession.cookies
-            },
-            timeout: 10000
-        });
-        
-        const $ = cheerio.load(testResponse.data);
-        const pageTitle = $('title').text();
-        const isLoggedIn = !pageTitle.includes('Login') && 
-                          !testResponse.data.includes('Sign in to your account');
-        
-        console.log(isLoggedIn ? '✅ Сессия активна' : '❌ Сессия не активна');
-        console.log('📄 Заголовок страницы:', pageTitle);
-        
-        return isLoggedIn;
-        
-    } catch (error) {
-        console.error('❌ Ошибка тестирования сессии:', error.message);
-        return false;
-    }
-}
-
-// =====================
-// Функции парсинга
-// =====================
-async function ensureAuth() {
-    const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 минут
-    
-    if (!authSession.isLoggedIn || 
-        Date.now() - authSession.lastLogin > SESSION_TIMEOUT) {
-        console.log('🔄 Сессия устарела или отсутствует, логинимся...');
-        const success = await loginToTipstrr();
-        if (!success) {
-            throw new Error('Не удалось войти в аккаунт Tipstrr');
-        }
-    }
-    
-    return true;
-}
-
-async function fetchTipstrrData(count = 50) {
-    try {
-        await ensureAuth();
-        
-        console.log(`📥 Загружаю страницу результатов...`);
-        
-        const response = await axios.get(TIPSTRR_CONFIG.resultsUrl, {
-            headers: {
-                ...TIPSTRR_CONFIG.headers,
-                'Cookie': authSession.cookies,
-                'Referer': TIPSTRR_CONFIG.baseUrl
-            },
-            timeout: 20000
-        });
-        
-        console.log(`✅ Страница загружена, размер: ${response.data.length} байт`);
-        
-        // Сохраняем HTML для отладки
-        if (process.env.NODE_ENV !== 'production') {
-            fs.writeFileSync('debug_page.html', response.data);
-            console.log('💾 HTML сохранен в debug_page.html');
-        }
-        
-        const tips = parseHTML(response.data, count);
-        console.log(`🎯 Распарсено ${tips.length} прогнозов`);
-        
-        // Кэшируем данные
-        cachedData.tips = tips;
-        cachedData.timestamp = Date.now();
-        
-        return tips;
-        
-    } catch (error) {
-        console.error('❌ Ошибка загрузки данных:', error.message);
-        
-        if (error.response) {
-            console.error('Статус:', error.response.status);
-            
-            // Если 401 или 403 - пробуем перелогиниться
-            if ([401, 403].includes(error.response.status)) {
-                console.log('🔄 Обнаружена ошибка авторизации, пробую перелогиниться...');
-                authSession.isLoggedIn = false;
-                return fetchTipstrrData(count);
-            }
-        }
-        
-        throw error;
-    }
-}
-
-function parseHTML(html, limit) {
-    const $ = cheerio.load(html);
-    const tips = [];
-    
-    console.log('🔍 Начинаю парсинг HTML...');
-    
-    // Селекторы для разных версий сайта
-    const selectors = [
-        'article', // Основные карточки
-        '[class*="card"]', // Карточки
-        '.bg-white.rounded-lg', // Белые карточки с закруглениями
-        '[data-testid*="tip"]', // По data-атрибутам
-        '.flex.flex-col', // Flex контейнеры
-        '.border.rounded', // Элементы с рамкой
-        'div[class*="result"]' // Результаты
-    ];
-    
-    // Пробуем все селекторы
-    for (const selector of selectors) {
-        const elements = $(selector);
-        console.log(`🔎 Селектор "${selector}": найдено ${elements.length} элементов`);
-        
-        if (elements.length > 0) {
-            elements.each((i, element) => {
-                if (tips.length >= limit) return false;
-                
-                try {
-                    const tip = parseTipElement($, $(element));
-                    if (tip && tip.event && isValidTip(tip)) {
-                        tips.push(tip);
-                    }
-                } catch (err) {
-                    console.warn(`Ошибка парсинга элемента ${i}:`, err.message);
-                }
-            });
-            
-            if (tips.length > 0) break;
-        }
-    }
-    
-    // Если ничего не нашли, используем резервный метод
-    if (tips.length === 0) {
-        console.log('🔄 Использую резервный метод парсинга...');
-        const fallbackTips = parseByTextPattern($, html, limit);
-        tips.push(...fallbackTips);
-    }
-    
-    return tips;
-}
-
-function parseTipElement($, $element) {
-    const tip = {};
-    
-    // 1. Извлекаем текст всего элемента
-    const fullText = $element.text().replace(/\s+/g, ' ').trim();
-    
-    // 2. Дата и время
-    const timeElement = $element.find('time');
-    if (timeElement.length) {
-        tip.date = timeElement.attr('datetime') || 
-                  timeElement.attr('title') || 
-                  timeElement.text().trim();
-    } else {
-        // Ищем дату в тексте
-        const dateMatch = fullText.match(/\d{1,2}(?:st|nd|rd|th)?\s+\w+\s+\d{4}/) ||
-                         fullText.match(/\d{4}-\d{2}-\d{2}/) ||
-                         fullText.match(/\d{2}\/\d{2}\/\d{4}/);
-        if (dateMatch) tip.date = dateMatch[0];
-    }
-    
-    // 3. Матч (событие)
-    const eventElements = $element.find('a[href*="/fixture/"], [class*="event"], [class*="match"]');
-    if (eventElements.length) {
-        tip.event = eventElements.first().text().trim();
-    } else {
-        // Ищем паттерн "Team A v Team B"
-        const eventMatch = fullText.match(/([A-Z][A-Za-z0-9\s.-]+?)\s+v(?:s|\.)?\s+([A-Z][A-Za-z0-9\s.-]+)/);
-        if (eventMatch) {
-            tip.event = `${eventMatch[1]} v ${eventMatch[2]}`;
-        }
-    }
-    
-    // 4. Прогноз
-    const predictionElements = $element.find('[class*="prediction"], [class*="tip"], [class*="pick"]');
-    if (predictionElements.length) {
-        tip.prediction = predictionElements.first().text().trim();
-    } else if (fullText.includes('Match winner')) {
-        const match = fullText.match(/Match winner • ([A-Za-z0-9\s.-]+)/);
-        tip.prediction = match ? `Match winner • ${match[1]}` : 'Match winner';
-    }
-    
-    // 5. Коэффициент
-    const oddsElements = $element.find('[data-odds], [class*="odds"], [class*="coefficient"]');
-    if (oddsElements.length) {
-        tip.odds = oddsElements.first().attr('data-odds') || oddsElements.first().text().trim();
-    } else {
-        const oddsMatch = fullText.match(/\b\d+\.\d{2}\b/);
-        if (oddsMatch) tip.odds = oddsMatch[0];
-    }
-    
-    // 6. Ставка
-    const stakeMatch = fullText.match(/£(\d+(?:\.\d{2})?)\s*stake/i) ||
-                      fullText.match(/stake.*?£(\d+(?:\.\d{2})?)/i);
-    if (stakeMatch) {
-        tip.stake = `£${stakeMatch[1]}`;
-    } else {
-        tip.stake = '£10'; // Значение по умолчанию
-    }
-    
-    // 7. Результат
-    if (fullText.toLowerCase().includes('won')) {
-        tip.result = 'won';
-        tip.resultEmoji = '✅';
-    } else if (fullText.toLowerCase().includes('lost')) {
-        tip.result = 'lost';
-        tip.resultEmoji = '❌';
-    } else {
-        tip.result = 'pending';
-        tip.resultEmoji = '➖';
-    }
-    
-    // 8. Прибыль
-    const profitMatch = fullText.match(/[+-]£\d+(?:\.\d{2})?/) ||
-                       fullText.match(/profit.*?([+-]\d+(?:\.\d{2})?)/i);
-    if (profitMatch) {
-        tip.profit = profitMatch[0].includes('£') ? profitMatch[0] : `£${profitMatch[1]}`;
-    }
-    
-    // 9. Лига/Турнир
-    const leagueElements = $element.find('[class*="league"], [class*="tournament"]');
-    if (leagueElements.length) {
-        tip.league = leagueElements.first().text().trim();
-    }
-    
-    // 10. Дополнительная информация
-    tip.timestamp = new Date().toISOString();
-    tip.source = 'tipstrr.com';
-    
-    return tip;
-}
-
-function parseByTextPattern($, html, limit) {
-    const tips = [];
-    
-    // Разбиваем HTML на строки и ищем паттерны
-    const lines = html.split('\n');
-    
-    for (const line of lines) {
-        if (tips.length >= limit) break;
-        
-        const cleanLine = line.trim();
-        if (cleanLine.length < 20 || cleanLine.length > 500) continue;
-        
-        // Проверяем, похожа ли строка на прогноз
-        if (cleanLine.includes('v') && 
-            (cleanLine.includes('Match winner') || cleanLine.includes('odds'))) {
-            
-            const tip = {};
-            
-            // Извлекаем данные
-            const eventMatch = cleanLine.match(/([A-Z][A-Za-z0-9\s.-]+?)\s+v(?:s|\.)?\s+([A-Z][A-Za-z0-9\s.-]+)/);
-            if (eventMatch) tip.event = `${eventMatch[1]} v ${eventMatch[2]}`;
-            
-            const oddsMatch = cleanLine.match(/\b\d+\.\d{2}\b/);
-            if (oddsMatch) tip.odds = oddsMatch[0];
-            
-            const profitMatch = cleanLine.match(/[+-]£\d+(?:\.\d{2})?/);
-            if (profitMatch) tip.profit = profitMatch[0];
-            
-            if (cleanLine.includes('won')) tip.result = 'won';
-            if (cleanLine.includes('lost')) tip.result = 'lost';
-            
-            if (tip.event) {
-                tip.timestamp = new Date().toISOString();
-                tip.stake = '£10';
-                tip.prediction = 'Match winner';
-                tips.push(tip);
-            }
-        }
-    }
-    
-    return tips;
-}
-
-function isValidTip(tip) {
-    return tip.event && 
-           tip.event.length > 5 && 
-           !tip.event.includes('Unlock') && 
-           !tip.event.includes('Sign up') &&
-           tip.event.includes('v');
-}
-
-// =====================
-// Вспомогательные функции
-// =====================
-function formatDate(dateString) {
-    if (!dateString) return new Date().toISOString().split('T')[0];
-    
-    try {
-        // Пробуем разные форматы
-        const formats = [
-            // "19 December 2025 at 15:20"
-            /(\d{1,2})\s+(\w+)\s+(\d{4})/,
-            // "2025-12-19"
-            /(\d{4})-(\d{2})-(\d{2})/,
-            // "19/12/2025"
-            /(\d{2})\/(\d{2})\/(\d{4})/
-        ];
-        
-        for (const format of formats) {
-            const match = dateString.match(format);
-            if (match) {
-                if (format === formats[0]) {
-                    const months = {
-                        'January': '01', 'February': '02', 'March': '03',
-                        'April': '04', 'May': '05', 'June': '06',
-                        'July': '07', 'August': '08', 'September': '09',
-                        'October': '10', 'November': '11', 'December': '12'
-                    };
-                    const day = match[1].padStart(2, '0');
-                    const month = months[match[2]] || '01';
-                    const year = match[3];
-                    return `${year}-${month}-${day}`;
-                } else if (format === formats[1]) {
-                    return match[0];
-                } else if (format === formats[2]) {
-                    return `${match[3]}-${match[2]}-${match[1]}`;
-                }
-            }
-        }
-        
-        // Если не распарсилось, возвращаем как есть
-        return dateString;
-        
-    } catch (error) {
-        return dateString;
-    }
-}
-
-// =====================
-// Статические файлы
-// =====================
-app.use(express.static(path.join(__dirname, 'public')));
-
-// =====================
-// API маршруты
-// =====================
-app.get('/api/health', (req, res) => {
-    res.json({
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV || 'development',
-        render: true,
-        session: {
-            isLoggedIn: authSession.isLoggedIn,
-            lastLogin: authSession.lastLogin ? new Date(authSession.lastLogin).toISOString() : null
-        }
-    });
-});
-
-app.get('/api/tips', async (req, res) => {
-    try {
-        const { count = 50, page = 1, force = false } = req.query;
-        const parsedCount = Math.min(parseInt(count), 100);
-        const parsedPage = parseInt(page) || 1;
-        
-        console.log(`📊 API запрос: count=${parsedCount}, page=${parsedPage}, force=${force}`);
-        
-        // Проверяем кэш
-        const useCache = !force && 
-                        cachedData.tips.length > 0 && 
-                        Date.now() - cachedData.timestamp < cachedData.ttl;
-        
-        let tips;
-        if (useCache) {
-            console.log('💾 Использую кэшированные данные');
-            tips = cachedData.tips;
         } else {
-            tips = await fetchTipstrrData(parsedCount);
+            throw new Error('Неверный ответ сервера');
         }
         
-        // Пагинация
-        const startIndex = (parsedPage - 1) * parsedCount;
-        const endIndex = startIndex + parsedCount;
-        const paginatedTips = tips.slice(startIndex, endIndex);
-        
-        // Форматируем для фронтенда
-        const formattedTips = paginatedTips.map(tip => ({
-            addedDate: formatDate(tip.date || tip.timestamp),
-            matchDateTime: formatDate(tip.date),
-            event: tip.event || 'Не указано',
-            prediction: tip.prediction || 'Match winner',
-            advisedOdds: tip.odds || '-',
-            stake: tip.stake || '£10',
-            result: tip.result || 'pending',
-            profit: tip.profit || '-',
-            league: tip.league || '',
-            resultEmoji: tip.resultEmoji || '➖',
-            source: tip.source || 'tipstrr.com'
-        }));
-        
-        res.json({
-            success: true,
-            count: formattedTips.length,
-            total: tips.length,
-            page: parsedPage,
-            totalPages: Math.ceil(tips.length / parsedCount),
-            cached: useCache,
-            cacheAge: useCache ? Date.now() - cachedData.timestamp : 0,
-            tips: formattedTips
-        });
-        
     } catch (error) {
-        console.error('❌ API ошибка:', error.message);
-        res.status(500).json({
-            success: false,
-            error: error.message,
-            message: 'Не удалось получить данные с Tipstrr',
-            tips: getDemoData() // Возвращаем демо-данные при ошибке
-        });
-    }
-});
-
-app.get('/api/stats', async (req, res) => {
-    try {
-        const tips = await fetchTipstrrData(100);
+        console.error('❌ Ошибка подключения к серверу:', error);
+        updateStatus('Сервер: офлайн', 'status-offline');
         
-        const stats = {
-            total: tips.length,
-            won: tips.filter(t => t.result === 'won').length,
-            lost: tips.filter(t => t.result === 'lost').length,
-            pending: tips.filter(t => !t.result || t.result === 'pending').length,
-            totalProfit: tips.reduce((sum, t) => {
-                if (t.profit) {
-                    const num = parseFloat(t.profit.replace(/[^0-9.-]+/g, '')) || 0;
-                    return sum + num;
+        // Показываем информацию об ошибке
+        const serverInfo = document.getElementById('server-info');
+        const statusText = document.getElementById('server-status-text');
+        
+        if (serverInfo) serverInfo.style.display = 'block';
+        if (statusText) statusText.textContent = '❌ Офлайн';
+        
+        alert(`Ошибка подключения к серверу:\n${error.message}\n\nУбедитесь, что сервер запущен по адресу:\n${serverBaseUrl}`);
+        
+        return false;
+    }
+}
+
+// Обновление статуса на странице
+function updateStatus(text, className) {
+    const statusElement = document.getElementById('server-status');
+    if (statusElement) {
+        statusElement.textContent = text;
+        statusElement.className = `status-badge ${className}`;
+    }
+}
+
+// Загрузка реальных данных
+async function fetchRealData(forceRefresh = false) {
+    showLoading(true);
+    
+    try {
+        const count = document.getElementById('count-select').value;
+        const url = `${serverBaseUrl}/api/tips?count=${count}${forceRefresh ? '&force=true' : ''}`;
+        
+        console.log(`🚀 Запрос данных: ${url}`);
+        
+        const response = await fetch(url, {
+            signal: AbortSignal.timeout(10000)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Ошибка сервера: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            parsedData = result.tips || [];
+            
+            // Показываем информацию о кэше
+            const cacheInfo = document.getElementById('cache-info');
+            if (cacheInfo && result.cached) {
+                cacheInfo.style.display = 'inline';
+                cacheInfo.title = `Данные из кэша (возраст: ${Math.round(result.cacheAge / 1000)} сек)`;
+            } else if (cacheInfo) {
+                cacheInfo.style.display = 'none';
+            }
+            
+            if (parsedData.length > 0) {
+                showResults();
+                document.getElementById('export-btn').disabled = false;
+                
+                // Обновляем статус
+                const lastUpdate = document.getElementById('last-update');
+                if (lastUpdate) {
+                    lastUpdate.textContent = new Date().toLocaleString('ru-RU');
                 }
-                return sum;
-            }, 0).toFixed(2),
-            winRate: tips.length > 0 ? 
-                ((tips.filter(t => t.result === 'won').length / tips.length) * 100).toFixed(1) : 0,
-            averageOdds: tips.length > 0 ? 
-                (tips.reduce((sum, t) => sum + (parseFloat(t.odds) || 0), 0) / tips.length).toFixed(2) : 0
-        };
-        
-        res.json({
-            success: true,
-            stats,
-            session: {
-                isLoggedIn: authSession.isLoggedIn,
-                lastLogin: new Date(authSession.lastLogin).toLocaleString('ru-RU')
-            },
-            lastUpdated: new Date().toISOString()
-        });
+                
+                // Показываем уведомление
+                showNotification(`✅ Получено ${parsedData.length} прогнозов${result.cached ? ' (из кэша)' : ''}`);
+                
+            } else {
+                showNotification('⚠️ Сервер вернул пустой список прогнозов');
+            }
+            
+        } else {
+            throw new Error(result.message || result.error || 'Неизвестная ошибка сервера');
+        }
         
     } catch (error) {
-        console.error('❌ Ошибка статистики:', error.message);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        console.error('❌ Ошибка получения данных:', error);
+        showNotification(`❌ Ошибка: ${error.message}`);
+        
+        // Показываем демо-данные при ошибке
+        if (parsedData.length === 0) {
+            showDemoData();
+        }
+        
+    } finally {
+        showLoading(false);
     }
-});
+}
 
-app.get('/api/debug', async (req, res) => {
+// Показать статистику
+async function showStats() {
     try {
-        const authStatus = await testAuthSession();
-        
-        res.json({
-            session: {
-                isLoggedIn: authSession.isLoggedIn,
-                hasCookies: !!authSession.cookies,
-                cookiesLength: authSession.cookies ? authSession.cookies.length : 0,
-                csrfToken: authSession.csrfToken ? 'Присутствует' : 'Отсутствует',
-                lastLogin: authSession.lastLogin ? new Date(authSession.lastLogin).toLocaleString('ru-RU') : 'Никогда',
-                authStatus: authStatus ? 'Активна' : 'Не активна'
-            },
-            cache: {
-                hasData: cachedData.tips.length > 0,
-                count: cachedData.tips.length,
-                age: cachedData.timestamp ? Date.now() - cachedData.timestamp : 0,
-                ttl: cachedData.ttl
-            },
-            environment: {
-                node: process.version,
-                env: process.env.NODE_ENV || 'development',
-                hasEmail: !!process.env.TIPSTRR_EMAIL,
-                hasPassword: !!process.env.TIPSTRR_PASSWORD,
-                port: PORT
-            },
-            timestamp: new Date().toISOString()
+        const response = await fetch(`${serverBaseUrl}/api/stats`, {
+            signal: AbortSignal.timeout(5000)
         });
+        
+        if (!response.ok) {
+            throw new Error(`Ошибка сервера: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            const stats = result.stats;
+            const message = `
+📊 Статистика Tipstrr:
+
+Всего прогнозов: ${stats.total}
+✅ Выиграно: ${stats.won}
+❌ Проиграно: ${stats.lost}
+➖ В ожидании: ${stats.pending}
+
+Процент выигрыша: ${stats.winRate}%
+Средний коэффициент: ${stats.averageOdds}
+Общая прибыль: £${stats.totalProfit}
+
+Последнее обновление: ${new Date(result.lastUpdated).toLocaleString('ru-RU')}
+            `.trim();
+            
+            alert(message);
+        } else {
+            throw new Error(result.error || 'Ошибка получения статистики');
+        }
         
     } catch (error) {
-        res.status(500).json({
-            error: error.message,
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-        });
+        alert('Ошибка получения статистики: ' + error.message);
     }
-});
+}
 
-// Демо-данные на случай ошибок
-function getDemoData() {
-    return [
+// Отображение результатов в таблице
+function showResults() {
+    const tbody = document.getElementById('results-body');
+    const countSpan = document.getElementById('count');
+    
+    if (!parsedData.length) {
+        tbody.innerHTML = '<tr><td colspan="8">Нет данных для отображения</td></tr>';
+        if (countSpan) countSpan.textContent = '0';
+        return;
+    }
+    
+    let html = '';
+    parsedData.forEach(item => {
+        const resultClass = item.result === 'won' ? 'success' : 
+                          item.result === 'lost' ? 'error' : '';
+        
+        const profitClass = (item.profit || '').startsWith('+') ? 'success' : 
+                          (item.profit || '').startsWith('-') ? 'error' : '';
+        
+        html += `<tr>
+            <td>${formatDate(item.addedDate)}</td>
+            <td><strong>${item.event || '-'}</strong></td>
+            <td>${item.prediction || '-'}</td>
+            <td>${item.advisedOdds || '-'}</td>
+            <td>${item.stake || '-'}</td>
+            <td class="${resultClass}">${item.resultEmoji || ''} ${item.result || '-'}</td>
+            <td class="${profitClass}">${item.profit || '-'}</td>
+            <td><small>${item.league || '-'}</small></td>
+        </tr>`;
+    });
+    
+    tbody.innerHTML = html;
+    if (countSpan) countSpan.textContent = parsedData.length;
+}
+
+// Демо-данные для тестирования
+function showDemoData() {
+    parsedData = [
         {
             addedDate: '2025-12-19',
-            matchDateTime: '2025-12-19',
             event: 'Walthamstow v Stanway Rovers',
             prediction: 'Match winner • Stanway Rovers',
             advisedOdds: '2.06',
             stake: '£10',
             result: 'won',
             profit: '+£10.60',
-            league: 'England Isthmian Division One North'
+            league: 'England Isthmian Division One North',
+            resultEmoji: '✅'
         },
         {
             addedDate: '2025-12-18',
-            matchDateTime: '2025-12-18',
             event: 'Vaduz v FC Aarau',
             prediction: 'Match winner • Vaduz',
             advisedOdds: '2.26',
             stake: '£10',
             result: 'won',
             profit: '+£12.60',
-            league: 'Switzerland Challenge League'
+            league: 'Switzerland Challenge League',
+            resultEmoji: '✅'
+        },
+        {
+            addedDate: '2025-12-17',
+            event: 'Stade Nyonnais v Xamax',
+            prediction: 'Match winner • Stade Nyonnais',
+            advisedOdds: '3.45',
+            stake: '£10',
+            result: 'lost',
+            profit: '-£10',
+            league: 'Switzerland Challenge League',
+            resultEmoji: '❌'
         }
     ];
+    
+    showResults();
+    document.getElementById('export-btn').disabled = false;
+    showNotification('⚠️ Показаны демо-данные (сервер недоступен)');
 }
 
-// =====================
-// Главные маршруты
-// =====================
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-app.get('/admin', (req, res) => {
-    if (process.env.NODE_ENV === 'production' && req.headers['x-render-secret'] !== process.env.RENDER_SECRET) {
-        return res.status(403).send('Access denied');
+// Вспомогательные функции
+function showLoading(show) {
+    const loading = document.getElementById('loading');
+    const btn = document.getElementById('parse-btn');
+    
+    if (!loading || !btn) return;
+    
+    if (show) {
+        loading.style.display = 'block';
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Загрузка...';
+    } else {
+        loading.style.display = 'none';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-play"></i> Загрузить реальные данные';
     }
-    res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head><title>Tipstrr Parser Admin</title></head>
-        <body>
-            <h1>Tipstrr Parser Admin</h1>
-            <p>Status: ${authSession.isLoggedIn ? '✅ Logged in' : '❌ Not logged in'}</p>
-            <button onclick="fetch('/api/debug').then(r => r.json()).then(console.log)">Debug Info</button>
-            <button onclick="fetch('/api/tips?count=5').then(r => r.json()).then(console.log)">Test API</button>
-            <button onclick="fetch('/api/tips?force=true').then(r => r.json()).then(console.log)">Force Refresh</button>
-        </body>
-        </html>
-    `);
-});
+}
 
-// 404 обработчик
-app.use((req, res) => {
-    res.status(404).json({
-        error: 'Not Found',
-        message: `Route ${req.path} not found`,
-        availableRoutes: ['/api/health', '/api/tips', '/api/stats', '/api/debug']
+function showNotification(message) {
+    // Создаем элемент уведомления
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        background: #333;
+        color: white;
+        border-radius: 5px;
+        z-index: 1000;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        font-family: Arial, sans-serif;
+        max-width: 400px;
+        word-wrap: break-word;
+    `;
+    
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    // Удаляем через 4 секунды
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        notification.style.transition = 'opacity 0.5s';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 500);
+    }, 4000);
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    try {
+        return new Date(dateStr).toLocaleDateString('ru-RU');
+    } catch {
+        return dateStr;
+    }
+}
+
+function exportToExcel() {
+    if (!parsedData.length) {
+        showNotification('❌ Нет данных для экспорта');
+        return;
+    }
+    
+    try {
+        // Проверяем, что XLSX библиотека загружена
+        if (typeof XLSX === 'undefined') {
+            throw new Error('Библиотека XLSX не загружена');
+        }
+        
+        // Подготавливаем данные для экспорта
+        const exportData = parsedData.map(item => ({
+            'Дата': item.addedDate,
+            'Матч': item.event,
+            'Прогноз': item.prediction,
+            'Коэффициент': item.advisedOdds,
+            'Ставка': item.stake,
+            'Результат': item.result,
+            'Прибыль': item.profit,
+            'Лига': item.league
+        }));
+        
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Tipstrr Прогнозы");
+        
+        const fileName = `tipstrr_${new Date().toISOString().slice(0,10)}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+        
+        showNotification(`✅ Файл "${fileName}" сохранен`);
+        
+    } catch (error) {
+        console.error('Ошибка экспорта:', error);
+        showNotification('❌ Ошибка экспорта: ' + error.message);
+        
+        // Альтернативный экспорт в CSV
+        if (confirm('XLSX не работает. Экспортировать в CSV?')) {
+            exportToCSV();
+        }
+    }
+}
+
+function exportToCSV() {
+    if (!parsedData.length) return;
+    
+    let csv = 'Дата,Матч,Прогноз,Коэффициент,Ставка,Результат,Прибыль,Лига\n';
+    
+    parsedData.forEach(item => {
+        csv += `"${item.addedDate || ''}","${item.event || ''}","${item.prediction || ''}",`;
+        csv += `"${item.advisedOdds || ''}","${item.stake || ''}","${item.result || ''}",`;
+        csv += `"${item.profit || ''}","${item.league || ''}"\n`;
     });
-});
-
-// =====================
-// Запуск сервера
-// =====================
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`
-    🚀 Tipstrr Parser Server запущен!
-    🔗 Локальный: http://localhost:${PORT}
-    🌐 Сеть: 0.0.0.0:${PORT}
-    📊 API: http://localhost:${PORT}/api/health
-    📁 Статика: http://localhost:${PORT}/
     
-    ⚙️  Конфигурация:
-    - NODE_ENV: ${process.env.NODE_ENV || 'development'}
-    - Email: ${process.env.TIPSTRR_EMAIL ? 'Установлен' : 'Не установлен'}
-    - Render.com: ✅ Готово к деплою
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
     
-    📋 Следующие шаги:
-    1. Запусти сервер локально: npm start
-    2. Проверь: http://localhost:${PORT}/api/health
-    3. Залий на GitHub
-    4. Деплой на Render.com
-    `);
-});
+    link.setAttribute('href', url);
+    link.setAttribute('download', `tipstrr_${new Date().toISOString().slice(0,10)}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showNotification('✅ CSV файл сохранен');
+}
 
-// Обработка ошибок
-process.on('uncaughtException', (error) => {
-    console.error('⚠️  Необработанное исключение:', error);
-});
+// Проверка поддержки AbortSignal.timeout (для старых браузеров)
+if (typeof AbortSignal !== 'undefined' && !AbortSignal.timeout) {
+    AbortSignal.timeout = function(ms) {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(new Error('Timeout')), ms);
+        return controller.signal;
+    };
+}
 
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('⚠️  Необработанный промис:', reason);
-});
+// Проверка при загрузке
+window.onload = function() {
+    console.log('🌍 Tipstrr Parser запущен');
+    console.log('🔗 Текущий URL:', window.location.href);
+    console.log('📁 Server URL:', serverBaseUrl);
+};
